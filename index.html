@@ -500,9 +500,49 @@
     .parent-header { padding: 0.75rem 1rem; }
     .parent-content { padding: 1rem; }
   }
+
+  /* Sync indicator */
+  .sync-dot {
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:var(--green); margin-right:6px;
+    animation: pulse-dot 2s ease-in-out infinite;
+  }
+  .sync-dot.offline { background:#e74c3c; animation:none; }
+  .sync-dot.connecting { background:var(--gold); }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .sync-bar {
+    position:fixed; top:0; left:0; right:0; z-index:999;
+    background:rgba(0,0,0,0.7); backdrop-filter:blur(10px);
+    padding:0.5rem 1rem; font-size:0.8rem; text-align:center;
+    border-bottom:1px solid rgba(255,255,255,0.1);
+    display:none;
+  }
+  .sync-bar.show { display:block; }
+  .loading-screen {
+    position:fixed; inset:0; z-index:500;
+    background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:1rem;
+  }
+  .loading-spinner {
+    width:50px; height:50px; border-radius:50%;
+    border:3px solid rgba(255,255,255,0.1);
+    border-top-color:var(--gold);
+    animation:spin 0.8s linear infinite;
+  }
+  .loading-text { font-family:"Fredoka One",cursive; font-size:1.4rem; color:var(--gold); }
 </style>
 </head>
 <body>
+
+<!-- Loading screen -->
+<div class="loading-screen" id="loading-screen">
+  <div style="font-size:3rem">✨</div>
+  <div class="loading-spinner"></div>
+  <div class="loading-text">Loading Star Chart...</div>
+</div>
+
+<!-- Sync bar -->
+<div class="sync-bar" id="sync-bar"></div>
 
 <div class="stars" id="stars-bg"></div>
 
@@ -683,8 +723,24 @@
 
 <div class="toast" id="toast"></div>
 
-<script>
-// ============ DATA ============
+<script type="module">
+// ============ FIREBASE SETUP ============
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, getDocs, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCSXdMGIjXYXU7N8WOqavXyu4OSxBTmdHI",
+  authDomain: "starchart-b02e8.firebaseapp.com",
+  projectId: "starchart-b02e8",
+  storageBucket: "starchart-b02e8.firebasestorage.app",
+  messagingSenderId: "577060203712",
+  appId: "1:577060203712:web:dfd98dd347654d88ba9125"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ============ CONSTANTS ============
 const DEFAULT_PW = 'star1234';
 const DEFAULT_EMOJI_LEVELS = [
   { min: 0,   emoji: '😴', label: 'Just warming up...' },
@@ -696,8 +752,6 @@ const DEFAULT_EMOJI_LEVELS = [
   { min: 100, emoji: '👑', label: 'The Ultimate Star!' },
 ];
 const PRESET_EMOJIS = ['😴','🌱','😊','🌟','⭐','🎯','💪','🔥','🏅','🥇','🏆','🎖️','🚀','💎','👑'];
-function getLevels() { return load('sc_levels', DEFAULT_EMOJI_LEVELS); }
-function saveLevels(l) { save('sc_levels', l); }
 const COLORS = {
   pink:   { main:'#FF6B9D', grad:'#FF6B9D,#FF8EAA', ring:'#FF6B9D' },
   blue:   { main:'#3498DB', grad:'#3498DB,#5DADE2', ring:'#3498DB' },
@@ -706,40 +760,105 @@ const COLORS = {
   gold:   { main:'#FFD700', grad:'#FFD700,#FFA500', ring:'#FFD700' },
 };
 
-function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; } }
-function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+// ============ IN-MEMORY STATE (synced from Firebase) ============
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS };
+let unsubscribers = [];
 
-function getData() { return { kids: load('sc_kids',[]), tasks: load('sc_tasks',[]), done: load('sc_done',{}), pw: load('sc_pw', DEFAULT_PW) }; }
-function saveKids(k){ save('sc_kids',k); }
-function saveTasks(t){ save('sc_tasks',t); }
-function saveDone(d){ save('sc_done',d); }
-function savePw(p){ save('sc_pw',p); }
+// ============ FIREBASE HELPERS ============
+async function fbSet(docId, data) {
+  try { await setDoc(doc(db,'starchart', docId), data); } catch(e) { syncBar('⚠️ Save failed: '+e.message, true); }
+}
+async function fbGet(docId, def) {
+  try {
+    const snap = await getDoc(doc(db,'starchart', docId));
+    return snap.exists() ? snap.data() : def;
+  } catch(e) { return def; }
+}
+
+function syncBar(msg, error=false) {
+  const bar = document.getElementById('sync-bar');
+  bar.textContent = msg;
+  bar.className = 'sync-bar show' + (error?' sync-err':'');
+  clearTimeout(bar._t);
+  if(!error) bar._t = setTimeout(()=>bar.classList.remove('show'), 2500);
+}
+
+// ============ REAL-TIME LISTENERS ============
+function startListeners() {
+  // Unsubscribe any old listeners
+  unsubscribers.forEach(u=>u());
+  unsubscribers = [];
+
+  const docs = ['kids','tasks','done','settings'];
+  docs.forEach(docId => {
+    const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
+      if(!snap.exists()) return;
+      const data = snap.data();
+      if(docId === 'kids')     { STATE.kids  = data.list  || []; }
+      if(docId === 'tasks')    { STATE.tasks = data.list  || []; }
+      if(docId === 'done')     { STATE.done  = data.days  || {}; }
+      if(docId === 'settings') {
+        STATE.pw     = data.pw     || DEFAULT_PW;
+        STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
+      }
+      // Re-render whichever view is currently active
+      const active = document.querySelector('[id^="view-"].active');
+      if(!active) return;
+      if(active.id === 'view-kids') renderKidsView();
+      if(active.id === 'view-parent') {
+        const activeTab = document.querySelector('.tab-btn.active');
+        const tabName = activeTab ? activeTab.textContent.trim() : '';
+        if(tabName.includes('Mark')) renderMarkTab();
+        if(tabName.includes('Tasks')) renderTasksTab();
+        if(tabName.includes('Kids')) renderKidsTab();
+        if(tabName.includes('Settings')) renderLevelsEditor();
+      }
+    }, (err) => {
+      syncBar('⚠️ Connection issue. Retrying...', true);
+    });
+    unsubscribers.push(unsub);
+  });
+}
+
+// ============ SAVE HELPERS ============
+async function saveKids(kids)    { STATE.kids=kids;   await fbSet('kids',    { list: kids }); }
+async function saveTasks(tasks)  { STATE.tasks=tasks; await fbSet('tasks',   { list: tasks }); }
+async function saveDone(done)    { STATE.done=done;   await fbSet('done',    { days: done }); }
+async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ pw, levels: STATE.levels }); }
+async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls }); }
+
+function getData()  { return STATE; }
+function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels : DEFAULT_EMOJI_LEVELS; }
 
 // ============ UTILS ============
 function showView(v) {
   document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
-  if(v==='kids') renderKidsView();
+  if(v==='kids')   renderKidsView();
   if(v==='parent') renderParentView();
 }
-function showLogin() { document.getElementById('login-pw').value=''; document.getElementById('login-err').textContent=''; showView('login'); }
+function showLogin() {
+  document.getElementById('login-pw').value='';
+  document.getElementById('login-err').textContent='';
+  showView('login');
+}
 function doLogin() {
   const pw = document.getElementById('login-pw').value;
-  if(pw === load('sc_pw', DEFAULT_PW)) { showView('parent'); }
+  if(pw === STATE.pw) { showView('parent'); }
   else { document.getElementById('login-err').textContent='Wrong password. Try again.'; document.getElementById('login-pw').value=''; document.getElementById('login-pw').focus(); }
 }
 function logout() { showView('kids'); }
 
 function toast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.classList.add('show');
-  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2200);
+  t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
 function getEmoji(pts) {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
   let level = levels[0];
-  for(const l of levels) if(pts >= l.min) level = l; else break;
+  for(const l of levels) { if(pts >= l.min) level=l; else break; }
   return level;
 }
 
@@ -753,21 +872,23 @@ function starsForPoints(pts) {
 function confetti(x, y) {
   const colors = ['#FFD700','#FF6B9D','#1ABC9C','#9B59B6','#3498DB','#FF8C00'];
   for(let i=0;i<12;i++){
-    const el = document.createElement('div');
+    const el=document.createElement('div');
     el.className='confetti-piece';
-    el.style.left=(x + (Math.random()-0.5)*60)+'px';
-    el.style.top=(y - 20)+'px';
+    el.style.left=(x+(Math.random()-0.5)*60)+'px';
+    el.style.top=(y-20)+'px';
     el.style.background=colors[Math.floor(Math.random()*colors.length)];
     el.style.transform=`rotate(${Math.random()*360}deg)`;
     el.style.animationDelay=(Math.random()*0.3)+'s';
     document.body.appendChild(el);
-    setTimeout(()=>el.remove(), 1100);
+    setTimeout(()=>el.remove(),1100);
   }
 }
 
+function escHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
 // ============ STARS BG ============
 function makeStars() {
-  const c = document.getElementById('stars-bg');
+  const c=document.getElementById('stars-bg');
   for(let i=0;i<120;i++){
     const s=document.createElement('div'); s.className='star';
     const sz=Math.random()*2.5+0.5;
@@ -781,32 +902,26 @@ function renderKidsView() {
   const { kids, tasks, done } = getData();
   const tk = todayKey();
   const todayDone = done[tk] || {};
-
   document.getElementById('kids-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-
   const grid = document.getElementById('kids-grid');
   if(!kids.length) {
-    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:3rem;font-size:1.1rem">No children added yet.<br>Ask a parent to set up the app! 🌟</div>';
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:3rem;font-size:1.1rem">No children added yet.<br>Ask a parent to set up the app! 🌟</div>';
     return;
   }
-
   grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
-    let pts = 0;
-    tasks.forEach(t => { pts += (kidDone[t.id] || 0) * t.points; });
+    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const level = getEmoji(pts);
-    const col = COLORS[kid.color] || COLORS.pink;
-    const stars = starsForPoints(pts);
-
+    const col   = COLORS[kid.color] || COLORS.pink;
+    const stars  = starsForPoints(pts);
     const taskItems = tasks.map(t => {
-      const count = kidDone[t.id] || 0;
+      const count = kidDone[t.id]||0;
       return `<li class="kid-task-item">
         <div class="kid-task-check ${count>0?'done':'pending'}">${count>0?count:''}</div>
         <span class="kid-task-name">${escHtml(t.name)}</span>
         <span class="kid-task-pts">${count>0?`×${count} = +${count*t.points}`:'+'+t.points}pts</span>
       </li>`;
     }).join('');
-
     return `<div class="kid-card">
       <div class="kid-avatar" style="background:linear-gradient(135deg,${col.grad});box-shadow:0 0 30px ${col.main}44">
         <span style="position:relative;z-index:1">${kid.emoji||'⭐'}</span>
@@ -817,39 +932,28 @@ function renderKidsView() {
       <div class="kid-emoji-label">${level.label}</div>
       <div class="kid-points-display">${pts}</div>
       <div class="kid-points-label">points today</div>
-      ${stars ? `<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>` : ''}
-      ${tasks.length ? `<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}</ul>` : '<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
+      ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
+      ${tasks.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
     </div>`;
   }).join('');
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() {
-  renderMarkTab();
-  renderTasksTab();
-  renderKidsTab();
-  renderLevelsEditor();
-}
+function renderParentView() { renderMarkTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
   const tk = todayKey();
   const todayDone = done[tk] || {};
   const grid = document.getElementById('mark-grid');
-
-  if(!kids.length || !tasks.length) {
-    grid.innerHTML = '<div class="p-card" style="opacity:0.6">Add some children and tasks first using the tabs above.</div>';
-    return;
-  }
-
+  if(!kids.length||!tasks.length) { grid.innerHTML='<div class="p-card" style="opacity:0.6">Add some children and tasks first using the tabs above.</div>'; return; }
   grid.innerHTML = kids.map(kid => {
-    const kidDone = todayDone[kid.id] || {};
-    let pts = 0; tasks.forEach(t=>{ pts += (kidDone[t.id]||0) * t.points; });
-    const col = COLORS[kid.color] || COLORS.pink;
+    const kidDone = todayDone[kid.id]||{};
+    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    const col   = COLORS[kid.color]||COLORS.pink;
     const level = getEmoji(pts);
-
     const counters = tasks.map(t => {
-      const count = kidDone[t.id] || 0;
+      const count = kidDone[t.id]||0;
       return `<div class="toggle-wrap">
         <span class="toggle-label">${escHtml(t.name)}</span>
         <span class="toggle-pts">+${t.points}pts each</span>
@@ -860,7 +964,6 @@ function renderMarkTab() {
         </div>
       </div>`;
     }).join('');
-
     return `<div class="kid-mark-card">
       <div class="kid-mark-name">
         <span>${kid.emoji||'⭐'}</span>
@@ -872,41 +975,35 @@ function renderMarkTab() {
   }).join('');
 }
 
-function adjustTask(kidId, taskId, delta, btn) {
-  const { done, tasks } = getData();
+async function adjustTask(kidId, taskId, delta, btn) {
+  const done = JSON.parse(JSON.stringify(STATE.done)); // deep clone
   const tk = todayKey();
-  if(!done[tk]) done[tk] = {};
-  if(!done[tk][kidId]) done[tk][kidId] = {};
-  const cur = done[tk][kidId][taskId] || 0;
-  const next = Math.max(0, cur + delta);
+  if(!done[tk]) done[tk]={};
+  if(!done[tk][kidId]) done[tk][kidId]={};
+  const cur  = done[tk][kidId][taskId]||0;
+  const next = Math.max(0, cur+delta);
   done[tk][kidId][taskId] = next;
-  saveDone(done);
-
-  // Update counter display
-  document.getElementById('cnt-'+kidId+'-'+taskId).textContent = next;
-  // Disable minus if 0
-  btn.closest('.counter-wrap').querySelector('.counter-btn').disabled = (next === 0);
-
-  // Update pts badge
-  const { tasks: allTasks } = getData();
-  const kidDone = done[tk][kidId] || {};
-  let pts = 0; allTasks.forEach(t=>{ pts += (kidDone[t.id]||0)*t.points; });
-  const level = getEmoji(pts);
+  // Optimistic UI update
+  const cntEl = document.getElementById('cnt-'+kidId+'-'+taskId);
+  if(cntEl) cntEl.textContent = next;
+  btn.closest('.counter-wrap').querySelector('.counter-btn').disabled = (next===0);
+  // Recalc badge
+  let pts=0; STATE.tasks.forEach(t=>{ pts+=(done[tk][kidId][t.id]||0)*t.points; });
   const badge = document.getElementById('pts-badge-'+kidId);
-  if(badge) badge.textContent = level.emoji+' '+pts+'pts';
-
-  if(delta > 0) {
-    const rect = btn.getBoundingClientRect();
-    confetti(rect.left, rect.top);
-    toast('Awesome! ⭐ +'+tasks.find(t=>t.id===taskId)?.points+'pts');
+  if(badge) { const lv=getEmoji(pts); badge.textContent=lv.emoji+' '+pts+'pts'; }
+  if(delta>0) {
+    const rect=btn.getBoundingClientRect(); confetti(rect.left,rect.top);
+    const t=STATE.tasks.find(t=>t.id===taskId);
+    toast('Awesome! ⭐ +' + (t?t.points:0)+'pts');
   }
+  await saveDone(done);
 }
 
 function renderTasksTab() {
   const { tasks } = getData();
   const list = document.getElementById('tasks-list-parent');
-  if(!tasks.length) { list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>'; return; }
-  list.innerHTML = tasks.map(t => `
+  if(!tasks.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>'; return; }
+  list.innerHTML = tasks.map(t=>`
     <div class="task-row" id="trow-${t.id}">
       <input class="form-input task-edit-name" value="${escHtml(t.name)}" style="flex:1;min-width:100px" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
       <div style="display:flex;align-items:center;gap:4px">
@@ -917,18 +1014,17 @@ function renderTasksTab() {
     </div>`).join('');
 }
 
-function saveTaskEdit(id) {
-  const tasks = load('sc_tasks',[]);
+async function saveTaskEdit(id) {
+  const tasks = JSON.parse(JSON.stringify(STATE.tasks));
   const row = document.getElementById('trow-'+id);
   if(!row) return;
   const newName = row.querySelector('.task-edit-name').value.trim();
-  const newPts = parseInt(row.querySelector('.task-edit-pts').value);
-  if(!newName || !newPts || newPts < 1) { toast('Invalid task name or points'); renderTasksTab(); return; }
+  const newPts  = parseInt(row.querySelector('.task-edit-pts').value);
+  if(!newName||!newPts||newPts<1){ toast('Invalid task name or points'); renderTasksTab(); return; }
   const t = tasks.find(t=>t.id===id);
   if(!t) return;
-  t.name = newName; t.points = newPts;
-  saveTasks(tasks);
-  renderMarkTab();
+  t.name=newName; t.points=newPts;
+  await saveTasks(tasks);
   toast('Task updated ✓');
 }
 
@@ -936,7 +1032,7 @@ function renderKidsTab() {
   const { kids } = getData();
   const list = document.getElementById('kids-list-parent');
   if(!kids.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>'; return; }
-  list.innerHTML = kids.map(k => {
+  list.innerHTML = kids.map(k=>{
     const col = COLORS[k.color]||COLORS.pink;
     return `<span class="kid-chip">
       <span>${k.emoji||'⭐'}</span>
@@ -946,182 +1042,161 @@ function renderKidsTab() {
   }).join('');
 }
 
-function addTask() {
+async function addTask() {
   const name = document.getElementById('task-name-input').value.trim();
-  const pts = parseInt(document.getElementById('task-pts-input').value);
+  const pts  = parseInt(document.getElementById('task-pts-input').value);
   if(!name){ toast('Enter a task name!'); return; }
   if(!pts||pts<1){ toast('Enter valid points!'); return; }
-  const tasks = load('sc_tasks',[]);
-  tasks.push({ id: Date.now()+'', name, points: pts });
-  saveTasks(tasks);
+  const tasks = [...STATE.tasks, { id: Date.now()+'', name, points: pts }];
+  await saveTasks(tasks);
   document.getElementById('task-name-input').value='';
   document.getElementById('task-pts-input').value='';
-  renderTasksTab();
-  renderMarkTab();
   toast('Task added! 📋');
 }
 
-function deleteTask(id) {
+async function deleteTask(id) {
   if(!confirm('Delete this task?')) return;
-  saveTasks(load('sc_tasks',[]).filter(t=>t.id!==id));
-  renderTasksTab(); renderMarkTab(); toast('Task removed.');
+  await saveTasks(STATE.tasks.filter(t=>t.id!==id));
+  toast('Task removed.');
 }
 
-function addKid() {
-  const name = document.getElementById('kid-name-input').value.trim();
-  const emoji = document.getElementById('kid-emoji-input').value.trim() || '⭐';
+async function addKid() {
+  const name  = document.getElementById('kid-name-input').value.trim();
+  const emoji = document.getElementById('kid-emoji-input').value.trim()||'⭐';
   const color = document.getElementById('kid-color-input').value;
   if(!name){ toast('Enter a name!'); return; }
-  const kids = load('sc_kids',[]);
-  kids.push({ id: Date.now()+'', name, emoji, color });
-  saveKids(kids);
+  const kids = [...STATE.kids, { id: Date.now()+'', name, emoji, color }];
+  await saveKids(kids);
   document.getElementById('kid-name-input').value='';
   document.getElementById('kid-emoji-input').value='';
-  renderKidsTab(); renderMarkTab(); toast(emoji+' '+name+' added!');
+  toast(emoji+' '+name+' added!');
 }
 
-function deleteKid(id) {
+async function deleteKid(id) {
   if(!confirm('Remove this child?')) return;
-  saveKids(load('sc_kids',[]).filter(k=>k.id!==id));
-  renderKidsTab(); renderMarkTab(); toast('Child removed.');
+  await saveKids(STATE.kids.filter(k=>k.id!==id));
+  toast('Child removed.');
 }
 
-function changePassword() {
+async function changePassword() {
   const cur = document.getElementById('pw-current').value;
-  const nw = document.getElementById('pw-new').value;
+  const nw  = document.getElementById('pw-new').value;
   const con = document.getElementById('pw-confirm').value;
   const msg = document.getElementById('pw-msg');
-  const stored = load('sc_pw', DEFAULT_PW);
-  if(cur !== stored){ msg.style.color='#e74c3c'; msg.textContent='Current password is wrong.'; return; }
-  if(nw.length < 4){ msg.style.color='#e74c3c'; msg.textContent='New password must be at least 4 characters.'; return; }
-  if(nw !== con){ msg.style.color='#e74c3c'; msg.textContent='Passwords do not match.'; return; }
-  savePw(nw);
+  if(cur !== STATE.pw){ msg.style.color='#e74c3c'; msg.textContent='Current password is wrong.'; return; }
+  if(nw.length<4){ msg.style.color='#e74c3c'; msg.textContent='New password must be at least 4 characters.'; return; }
+  if(nw!==con){ msg.style.color='#e74c3c'; msg.textContent='Passwords do not match.'; return; }
+  await savePw(nw);
   msg.style.color='#2ecc71'; msg.textContent='Password updated! ✓';
   document.getElementById('pw-current').value='';
   document.getElementById('pw-new').value='';
   document.getElementById('pw-confirm').value='';
 }
 
-function saveRefresh() {
-  save('sc_refresh', document.getElementById('refresh-select').value);
-}
-
-function resetDay() {
-  if(!confirm('Reset all done marks for today? Kids\' progress will be cleared.')) return;
-  const done = load('sc_done',{});
+async function resetDay() {
+  if(!confirm("Reset all done marks for today? Kids\'s progress will be cleared.")) return;
+  const done = JSON.parse(JSON.stringify(STATE.done));
   delete done[todayKey()];
-  saveDone(done);
-  renderMarkTab();
+  await saveDone(done);
   toast('Day reset! Fresh start 🌟');
 }
+
+function saveRefresh() { localStorage.setItem('sc_refresh', document.getElementById('refresh-select').value); }
 
 // ============ LEVELS EDITOR ============
 let openPickerId = null;
 
 function renderLevelsEditor() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
-  const editor = document.getElementById('levels-editor');
+  const editor  = document.getElementById('levels-editor');
   const preview = document.getElementById('levels-preview-bar');
-
-  preview.innerHTML = levels.map(l =>
-    `<div class="level-preview">
+  if(!editor) return;
+  preview.innerHTML = levels.map(l=>`
+    <div class="level-preview">
       <span class="level-preview-emoji">${l.emoji}</span>
       <div class="level-preview-info"><strong>${l.min}+ pts</strong><br>${escHtml(l.label)}</div>
-    </div>`
-  ).join('');
-
-  editor.innerHTML = levels.map((l, i) => `
+    </div>`).join('');
+  editor.innerHTML = levels.map((l,i)=>`
     <div class="level-row" id="lrow-${i}">
       <div class="emoji-picker-wrap">
         <button class="level-emoji-btn" onclick="toggleEmojiPicker(${i})" title="Click to change emoji">${l.emoji}</button>
         <div class="emoji-picker" id="epicker-${i}" style="display:none">
-          ${PRESET_EMOJIS.map(e => `<button class="emoji-picker-item" onclick="pickEmoji(${i},'${e}')">${e}</button>`).join('')}
+          ${PRESET_EMOJIS.map(e=>`<button class="emoji-picker-item" onclick="pickEmoji(${i},'${e}')">${e}</button>`).join('')}
           <div class="emoji-custom-row">
             <input class="emoji-custom-input" id="ecustom-${i}" placeholder="Type emoji..." maxlength="4">
             <button class="emoji-custom-btn" onclick="pickCustomEmoji(${i})">Use</button>
           </div>
         </div>
       </div>
-      <input class="form-input" id="lmin-${i}" type="number" min="0" value="${l.min}" style="padding:0.4rem 0.5rem;font-size:0.85rem;text-align:center" title="Points threshold">
+      <input class="form-input" id="lmin-${i}" type="number" min="0" value="${l.min}" style="padding:0.4rem 0.5rem;font-size:0.85rem;text-align:center">
       <input class="form-input" id="llabel-${i}" value="${escHtml(l.label)}" style="padding:0.4rem 0.7rem;font-size:0.85rem" placeholder="Label text">
-      ${i===0 ? '<span style="opacity:0.3;font-size:0.75rem">base</span>' : `<button class="level-del-btn" onclick="deleteLevel(${i})">×</button>`}
-    </div>`
-  ).join('');
+      ${i===0?'<span style="opacity:0.3;font-size:0.75rem">base</span>':`<button class="level-del-btn" onclick="deleteLevel(${i})">×</button>`}
+    </div>`).join('');
 }
 
 function toggleEmojiPicker(i) {
-  if(openPickerId !== null && openPickerId !== i) {
-    const prev = document.getElementById('epicker-'+openPickerId);
-    if(prev) prev.style.display='none';
-  }
-  const p = document.getElementById('epicker-'+i);
-  const showing = p.style.display !== 'none';
-  p.style.display = showing ? 'none' : 'grid';
-  openPickerId = showing ? null : i;
+  if(openPickerId!==null&&openPickerId!==i){ const p=document.getElementById('epicker-'+openPickerId); if(p)p.style.display='none'; }
+  const p=document.getElementById('epicker-'+i);
+  const showing=p.style.display!=='none';
+  p.style.display=showing?'none':'grid';
+  openPickerId=showing?null:i;
 }
-
-function pickEmoji(i, emoji) {
-  const btn = document.querySelector(`#lrow-${i} .level-emoji-btn`);
-  if(btn) btn.textContent = emoji;
+function pickEmoji(i,emoji) {
+  const btn=document.querySelector(`#lrow-${i} .level-emoji-btn`);
+  if(btn) btn.textContent=emoji;
   document.getElementById('epicker-'+i).style.display='none';
-  openPickerId = null;
+  openPickerId=null;
 }
+function pickCustomEmoji(i) { const v=document.getElementById('ecustom-'+i).value.trim(); if(v) pickEmoji(i,v); }
 
-function pickCustomEmoji(i) {
-  const val = document.getElementById('ecustom-'+i).value.trim();
-  if(!val) return;
-  pickEmoji(i, val);
-}
-
-document.addEventListener('click', e => {
-  if(openPickerId !== null && !e.target.closest('.emoji-picker-wrap')) {
-    const p = document.getElementById('epicker-'+openPickerId);
+document.addEventListener('click', e=>{
+  if(openPickerId!==null&&!e.target.closest('.emoji-picker-wrap')){
+    const p=document.getElementById('epicker-'+openPickerId);
     if(p) p.style.display='none';
-    openPickerId = null;
+    openPickerId=null;
   }
 });
 
-function addLevel() {
+async function addLevel() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
   const maxMin = levels.reduce((m,l)=>Math.max(m,l.min),0);
-  levels.push({ min: maxMin+10, emoji: '🌟', label: 'New level!' });
-  saveLevels(levels);
+  levels.push({ min:maxMin+10, emoji:'🌟', label:'New level!' });
+  await saveLevels(levels);
   renderLevelsEditor();
-  toast('Level added! Edit it above.');
+  toast('Level added!');
 }
 
-function deleteLevel(i) {
+async function deleteLevel(i) {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
-  if(levels.length <= 1) { toast('Need at least one level!'); return; }
+  if(levels.length<=1){ toast('Need at least one level!'); return; }
   levels.splice(i,1);
-  saveLevels(levels);
+  await saveLevels(levels);
   renderLevelsEditor();
   toast('Level removed.');
 }
 
-function saveLevelsFromEditor() {
+async function saveLevelsFromEditor() {
   const rows = document.querySelectorAll('#levels-editor .level-row');
-  const levels = [];
-  let valid = true;
-  rows.forEach((row, i) => {
+  const levels=[]; let valid=true;
+  rows.forEach((row,i)=>{
     const emoji = row.querySelector('.level-emoji-btn').textContent.trim();
-    const min = parseInt(document.getElementById('lmin-'+i).value);
+    const min   = parseInt(document.getElementById('lmin-'+i).value);
     const label = document.getElementById('llabel-'+i).value.trim();
-    if(isNaN(min) || min < 0 || !label) { valid=false; return; }
+    if(isNaN(min)||min<0||!label){ valid=false; return; }
     levels.push({ min, emoji, label });
   });
-  if(!valid) { const m=document.getElementById('levels-msg'); m.style.color='#e74c3c'; m.textContent='Check all fields — points must be ≥ 0 and labels required.'; return; }
+  if(!valid){ const m=document.getElementById('levels-msg'); m.style.color='#e74c3c'; m.textContent='Check all fields.'; return; }
   levels.sort((a,b)=>a.min-b.min);
-  saveLevels(levels);
+  await saveLevels(levels);
   renderLevelsEditor();
   const m=document.getElementById('levels-msg'); m.style.color='#2ecc71'; m.textContent='Levels saved! ✓';
   setTimeout(()=>m.textContent='',2500);
   toast('Appreciation levels updated! 🏅');
 }
 
-function resetLevels() {
+async function resetLevels() {
   if(!confirm('Reset to default levels?')) return;
-  saveLevels(DEFAULT_EMOJI_LEVELS);
+  await saveLevels(DEFAULT_EMOJI_LEVELS);
   renderLevelsEditor();
   toast('Reset to defaults ✓');
 }
@@ -1130,36 +1205,57 @@ function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   ['mark','tasks','kids','settings'].forEach(t=>{
-    document.getElementById('tab-'+t).style.display = t===name?'':'none';
+    document.getElementById('tab-'+t).style.display=t===name?'':'none';
   });
-  if(name==='mark') renderMarkTab();
-  if(name==='tasks') renderTasksTab();
-  if(name==='kids') renderKidsTab();
+  if(name==='mark')     renderMarkTab();
+  if(name==='tasks')    renderTasksTab();
+  if(name==='kids')     renderKidsTab();
   if(name==='settings') renderLevelsEditor();
-}
-
-function escHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
-
-// ============ AUTO REFRESH (Kids View) ============
-let refreshTimer;
-function startAutoRefresh() {
-  clearInterval(refreshTimer);
-  const interval = parseInt(load('sc_refresh','10')) * 1000;
-  refreshTimer = setInterval(()=>{
-    const activeView = document.querySelector('[id^="view-"].active');
-    if(activeView && activeView.id === 'view-kids') renderKidsView();
-  }, interval);
 }
 
 // ============ INIT ============
 makeStars();
-showView('kids');
-startAutoRefresh();
 
-// Load refresh setting
-const rs = load('sc_refresh','10');
-const sel = document.getElementById('refresh-select');
-if(sel) { sel.value = rs; }
+// Load initial data from Firebase, then start listeners
+async function init() {
+  try {
+    const [kidsData, tasksData, doneData, settingsData] = await Promise.all([
+      fbGet('kids',    { list: [] }),
+      fbGet('tasks',   { list: [] }),
+      fbGet('done',    { days: {} }),
+      fbGet('settings',{ pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS }),
+    ]);
+    STATE.kids   = kidsData.list   || [];
+    STATE.tasks  = tasksData.list  || [];
+    STATE.done   = doneData.days   || {};
+    STATE.pw     = settingsData.pw     || DEFAULT_PW;
+    STATE.levels = settingsData.levels || DEFAULT_EMOJI_LEVELS;
+  } catch(e) {
+    console.warn('Init load failed, using defaults', e);
+  }
+
+  document.getElementById('loading-screen').style.display='none';
+  showView('kids');
+  startListeners();
+
+  // Load refresh setting from localStorage (device-specific preference)
+  const rs = localStorage.getItem('sc_refresh')||'10';
+  const sel = document.getElementById('refresh-select');
+  if(sel) sel.value=rs;
+}
+
+init();
+
+// Make functions available globally (needed for onclick handlers in HTML)
+window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
+window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
+window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.deleteKid=deleteKid;
+window.adjustTask=adjustTask; window.changePassword=changePassword; window.resetDay=resetDay;
+window.saveRefresh=saveRefresh; window.renderLevelsEditor=renderLevelsEditor;
+window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
+window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
+window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
+window.resetLevels=resetLevels;
 </script>
 </body>
 </html>
