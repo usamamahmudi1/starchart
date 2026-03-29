@@ -653,6 +653,20 @@
             <button class="btn btn-danger btn-sm" onclick="resetDay()">Reset Day</button>
           </div>
         </div>
+        <!-- APPRECIATION LEVELS -->
+        <div class="p-card">
+          <div class="section-title" style="margin-bottom:0.75rem">🏅 Appreciation Levels</div>
+          <div style="font-size:0.85rem;opacity:0.6;margin-bottom:1rem">Set which emoji appears at each point milestone. Click an emoji to change it, or type your own.</div>
+          <div id="levels-preview-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem"></div>
+          <div class="levels-editor" id="levels-editor"></div>
+          <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap">
+            <button class="btn btn-teal btn-sm" onclick="addLevel()">+ Add Level</button>
+            <button class="btn btn-gold btn-sm" onclick="saveLevelsFromEditor()">💾 Save Levels</button>
+            <button class="btn btn-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="resetLevels()">Reset to defaults</button>
+          </div>
+          <div id="levels-msg" style="margin-top:0.5rem;font-size:0.85rem;min-height:1.2em"></div>
+        </div>
+
         <div class="p-card" style="font-size:0.8rem;opacity:0.5;line-height:1.7">
           💡 <strong>How to use as screensaver:</strong><br>
           1. Save this file and open it in your browser<br>
@@ -672,7 +686,7 @@
 <script>
 // ============ DATA ============
 const DEFAULT_PW = 'star1234';
-const EMOJI_LEVELS = [
+const DEFAULT_EMOJI_LEVELS = [
   { min: 0,   emoji: '😴', label: 'Just warming up...' },
   { min: 5,   emoji: '🌱', label: 'Getting started!' },
   { min: 15,  emoji: '⭐', label: 'Star in the making!' },
@@ -681,6 +695,9 @@ const EMOJI_LEVELS = [
   { min: 75,  emoji: '🚀', label: 'To the moon!' },
   { min: 100, emoji: '👑', label: 'The Ultimate Star!' },
 ];
+const PRESET_EMOJIS = ['😴','🌱','😊','🌟','⭐','🎯','💪','🔥','🏅','🥇','🏆','🎖️','🚀','💎','👑'];
+function getLevels() { return load('sc_levels', DEFAULT_EMOJI_LEVELS); }
+function saveLevels(l) { save('sc_levels', l); }
 const COLORS = {
   pink:   { main:'#FF6B9D', grad:'#FF6B9D,#FF8EAA', ring:'#FF6B9D' },
   blue:   { main:'#3498DB', grad:'#3498DB,#5DADE2', ring:'#3498DB' },
@@ -720,8 +737,9 @@ function toast(msg) {
 }
 
 function getEmoji(pts) {
-  let level = EMOJI_LEVELS[0];
-  for(const l of EMOJI_LEVELS) if(pts >= l.min) level = l; else break;
+  const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
+  let level = levels[0];
+  for(const l of levels) if(pts >= l.min) level = l; else break;
   return level;
 }
 
@@ -810,6 +828,7 @@ function renderParentView() {
   renderMarkTab();
   renderTasksTab();
   renderKidsTab();
+  renderLevelsEditor();
 }
 
 function renderMarkTab() {
@@ -996,6 +1015,117 @@ function resetDay() {
   toast('Day reset! Fresh start 🌟');
 }
 
+// ============ LEVELS EDITOR ============
+let openPickerId = null;
+
+function renderLevelsEditor() {
+  const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
+  const editor = document.getElementById('levels-editor');
+  const preview = document.getElementById('levels-preview-bar');
+
+  preview.innerHTML = levels.map(l =>
+    `<div class="level-preview">
+      <span class="level-preview-emoji">${l.emoji}</span>
+      <div class="level-preview-info"><strong>${l.min}+ pts</strong><br>${escHtml(l.label)}</div>
+    </div>`
+  ).join('');
+
+  editor.innerHTML = levels.map((l, i) => `
+    <div class="level-row" id="lrow-${i}">
+      <div class="emoji-picker-wrap">
+        <button class="level-emoji-btn" onclick="toggleEmojiPicker(${i})" title="Click to change emoji">${l.emoji}</button>
+        <div class="emoji-picker" id="epicker-${i}" style="display:none">
+          ${PRESET_EMOJIS.map(e => `<button class="emoji-picker-item" onclick="pickEmoji(${i},'${e}')">${e}</button>`).join('')}
+          <div class="emoji-custom-row">
+            <input class="emoji-custom-input" id="ecustom-${i}" placeholder="Type emoji..." maxlength="4">
+            <button class="emoji-custom-btn" onclick="pickCustomEmoji(${i})">Use</button>
+          </div>
+        </div>
+      </div>
+      <input class="form-input" id="lmin-${i}" type="number" min="0" value="${l.min}" style="padding:0.4rem 0.5rem;font-size:0.85rem;text-align:center" title="Points threshold">
+      <input class="form-input" id="llabel-${i}" value="${escHtml(l.label)}" style="padding:0.4rem 0.7rem;font-size:0.85rem" placeholder="Label text">
+      ${i===0 ? '<span style="opacity:0.3;font-size:0.75rem">base</span>' : `<button class="level-del-btn" onclick="deleteLevel(${i})">×</button>`}
+    </div>`
+  ).join('');
+}
+
+function toggleEmojiPicker(i) {
+  if(openPickerId !== null && openPickerId !== i) {
+    const prev = document.getElementById('epicker-'+openPickerId);
+    if(prev) prev.style.display='none';
+  }
+  const p = document.getElementById('epicker-'+i);
+  const showing = p.style.display !== 'none';
+  p.style.display = showing ? 'none' : 'grid';
+  openPickerId = showing ? null : i;
+}
+
+function pickEmoji(i, emoji) {
+  const btn = document.querySelector(`#lrow-${i} .level-emoji-btn`);
+  if(btn) btn.textContent = emoji;
+  document.getElementById('epicker-'+i).style.display='none';
+  openPickerId = null;
+}
+
+function pickCustomEmoji(i) {
+  const val = document.getElementById('ecustom-'+i).value.trim();
+  if(!val) return;
+  pickEmoji(i, val);
+}
+
+document.addEventListener('click', e => {
+  if(openPickerId !== null && !e.target.closest('.emoji-picker-wrap')) {
+    const p = document.getElementById('epicker-'+openPickerId);
+    if(p) p.style.display='none';
+    openPickerId = null;
+  }
+});
+
+function addLevel() {
+  const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
+  const maxMin = levels.reduce((m,l)=>Math.max(m,l.min),0);
+  levels.push({ min: maxMin+10, emoji: '🌟', label: 'New level!' });
+  saveLevels(levels);
+  renderLevelsEditor();
+  toast('Level added! Edit it above.');
+}
+
+function deleteLevel(i) {
+  const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
+  if(levels.length <= 1) { toast('Need at least one level!'); return; }
+  levels.splice(i,1);
+  saveLevels(levels);
+  renderLevelsEditor();
+  toast('Level removed.');
+}
+
+function saveLevelsFromEditor() {
+  const rows = document.querySelectorAll('#levels-editor .level-row');
+  const levels = [];
+  let valid = true;
+  rows.forEach((row, i) => {
+    const emoji = row.querySelector('.level-emoji-btn').textContent.trim();
+    const min = parseInt(document.getElementById('lmin-'+i).value);
+    const label = document.getElementById('llabel-'+i).value.trim();
+    if(isNaN(min) || min < 0 || !label) { valid=false; return; }
+    levels.push({ min, emoji, label });
+  });
+  if(!valid) { const m=document.getElementById('levels-msg'); m.style.color='#e74c3c'; m.textContent='Check all fields — points must be ≥ 0 and labels required.'; return; }
+  levels.sort((a,b)=>a.min-b.min);
+  saveLevels(levels);
+  renderLevelsEditor();
+  const m=document.getElementById('levels-msg'); m.style.color='#2ecc71'; m.textContent='Levels saved! ✓';
+  setTimeout(()=>m.textContent='',2500);
+  toast('Appreciation levels updated! 🏅');
+}
+
+function resetLevels() {
+  if(!confirm('Reset to default levels?')) return;
+  saveLevels(DEFAULT_EMOJI_LEVELS);
+  renderLevelsEditor();
+  toast('Reset to defaults ✓');
+}
+
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
@@ -1005,6 +1135,7 @@ function switchTab(name, btn) {
   if(name==='mark') renderMarkTab();
   if(name==='tasks') renderTasksTab();
   if(name==='kids') renderKidsTab();
+  if(name==='settings') renderLevelsEditor();
 }
 
 function escHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
