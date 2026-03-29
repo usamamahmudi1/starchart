@@ -1,0 +1,1034 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Star Chart ✨</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Fredoka+One&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sky: #0f0c29;
+    --sky2: #302b63;
+    --sky3: #24243e;
+    --gold: #FFD700;
+    --gold2: #FFA500;
+    --pink: #FF6B9D;
+    --purple: #9B59B6;
+    --teal: #1ABC9C;
+    --blue: #3498DB;
+    --red: #E74C3C;
+    --green: #2ECC71;
+    --card-bg: rgba(255,255,255,0.07);
+    --card-border: rgba(255,255,255,0.12);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Nunito', sans-serif;
+    background: linear-gradient(135deg, var(--sky) 0%, var(--sky2) 50%, var(--sky3) 100%);
+    min-height: 100vh;
+    color: white;
+    overflow-x: hidden;
+  }
+  /* Stars background */
+  .stars { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; overflow: hidden; }
+  .star { position: absolute; background: white; border-radius: 50%; animation: twinkle var(--d) ease-in-out infinite; }
+  @keyframes twinkle { 0%,100%{opacity:0.2;transform:scale(1)} 50%{opacity:1;transform:scale(1.3)} }
+
+  /* VIEWS */
+  #view-kids, #view-parent, #view-login { display: none; }
+  #view-kids.active, #view-parent.active, #view-login.active { display: block; }
+
+  /* ===================== KIDS VIEW ===================== */
+  .kids-header {
+    text-align: center;
+    padding: 2.5rem 1rem 1rem;
+    position: relative; z-index: 1;
+  }
+  .kids-title {
+    font-family: 'Fredoka One', cursive;
+    font-size: clamp(2rem, 6vw, 4rem);
+    background: linear-gradient(90deg, var(--gold), var(--pink), var(--gold));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+    animation: shimmer 3s linear infinite;
+    background-size: 200%;
+  }
+  @keyframes shimmer { 0%{background-position:0%} 100%{background-position:200%} }
+  .kids-date {
+    font-size: 1rem;
+    opacity: 0.6;
+    margin-top: 0.25rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .kids-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1.5rem;
+    padding: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative; z-index: 1;
+  }
+
+  .kid-card {
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 24px;
+    padding: 1.5rem;
+    backdrop-filter: blur(10px);
+    animation: float 4s ease-in-out infinite;
+    transition: transform 0.3s;
+  }
+  .kid-card:nth-child(2) { animation-delay: -2s; }
+  .kid-card:nth-child(3) { animation-delay: -1s; }
+  @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+
+  .kid-avatar {
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2.5rem;
+    margin: 0 auto 1rem;
+    position: relative;
+  }
+  .kid-avatar-ring {
+    position: absolute; inset: -4px;
+    border-radius: 50%;
+    border: 3px solid transparent;
+    animation: spin 3s linear infinite;
+  }
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+  .kid-name {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.8rem;
+    text-align: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .kid-emoji-badge {
+    text-align: center;
+    font-size: 3rem;
+    margin: 0.5rem 0;
+    animation: bounce 1s ease-in-out infinite;
+  }
+  @keyframes bounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+
+  .kid-emoji-label {
+    text-align: center;
+    font-size: 0.85rem;
+    opacity: 0.7;
+    margin-bottom: 1rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .kid-points-display {
+    text-align: center;
+    font-family: 'Fredoka One', cursive;
+    font-size: 3.5rem;
+    background: linear-gradient(90deg, var(--gold), var(--gold2));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .kid-points-label {
+    text-align: center;
+    font-size: 0.8rem;
+    opacity: 0.5;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 1rem;
+  }
+
+  .kid-tasks-list { list-style: none; }
+  .kid-task-item {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    font-size: 0.95rem;
+    transition: all 0.3s;
+  }
+  .kid-task-item:last-child { border-bottom: none; }
+  .kid-task-check {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.8rem;
+    flex-shrink: 0;
+  }
+  .kid-task-check.done { background: var(--green); }
+  .kid-task-check.pending { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); }
+  .kid-task-name { flex: 1; }
+  .kid-task-name.done { opacity: 0.5; text-decoration: line-through; }
+  .kid-task-pts {
+    font-size: 0.8rem;
+    font-weight: 700;
+    opacity: 0.7;
+  }
+
+  .stars-row {
+    display: flex; justify-content: center; gap: 4px;
+    margin: 0.75rem 0 0.25rem;
+    flex-wrap: wrap;
+  }
+  .star-icon { font-size: 1.2rem; }
+
+  /* Parent nav button */
+  .parent-nav-btn {
+    position: fixed; bottom: 1.5rem; right: 1.5rem;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.2);
+    color: white;
+    padding: 0.6rem 1rem;
+    border-radius: 999px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.8rem;
+    cursor: pointer;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+    display: flex; align-items: center; gap: 0.4rem;
+  }
+  .parent-nav-btn:hover { background: rgba(255,255,255,0.2); }
+
+  /* ===================== LOGIN VIEW ===================== */
+  .login-wrap {
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; z-index: 1;
+  }
+  .login-card {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 24px;
+    padding: 2.5rem;
+    width: 100%;
+    max-width: 360px;
+    backdrop-filter: blur(20px);
+    text-align: center;
+  }
+  .login-icon { font-size: 3rem; margin-bottom: 1rem; }
+  .login-title { font-family: 'Fredoka One', cursive; font-size: 1.8rem; margin-bottom: 0.5rem; }
+  .login-sub { opacity: 0.6; font-size: 0.9rem; margin-bottom: 2rem; }
+  .login-input {
+    width: 100%; padding: 0.85rem 1rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 12px;
+    color: white;
+    font-family: 'Nunito', sans-serif;
+    font-size: 1rem;
+    text-align: center;
+    letter-spacing: 0.2em;
+    outline: none;
+    margin-bottom: 1rem;
+    transition: border-color 0.2s;
+  }
+  .login-input:focus { border-color: var(--gold); }
+  .login-btn {
+    width: 100%; padding: 0.85rem;
+    background: linear-gradient(90deg, var(--gold), var(--gold2));
+    border: none; border-radius: 12px;
+    color: #1a1a2e;
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.1rem;
+    cursor: pointer;
+    transition: transform 0.15s, opacity 0.15s;
+  }
+  .login-btn:hover { transform: scale(1.03); }
+  .login-btn:active { transform: scale(0.97); }
+  .login-err { color: var(--red); font-size: 0.85rem; margin-top: 0.5rem; min-height: 1.2em; }
+  .login-back {
+    background: none; border: none; color: rgba(255,255,255,0.5);
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.85rem; cursor: pointer; margin-top: 1rem;
+    text-decoration: underline;
+  }
+
+  /* ===================== PARENT VIEW ===================== */
+  .parent-wrap { position: relative; z-index: 1; min-height: 100vh; }
+  .parent-header {
+    background: rgba(0,0,0,0.3);
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    padding: 1rem 1.5rem;
+    display: flex; align-items: center; justify-content: space-between;
+    backdrop-filter: blur(10px);
+    position: sticky; top: 0; z-index: 50;
+    flex-wrap: wrap; gap: 0.5rem;
+  }
+  .parent-logo { font-family: 'Fredoka One', cursive; font-size: 1.4rem; color: var(--gold); }
+  .parent-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .tab-btn {
+    padding: 0.4rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: transparent; color: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.85rem;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .tab-btn.active { background: var(--gold); color: #1a1a2e; border-color: var(--gold); font-weight: 700; }
+  .logout-btn {
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255,100,100,0.4);
+    background: transparent; color: rgba(255,150,150,1);
+    font-family: 'Nunito', sans-serif; font-size: 0.8rem;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .logout-btn:hover { background: rgba(255,100,100,0.15); }
+
+  .parent-content { padding: 1.5rem; max-width: 900px; margin: 0 auto; }
+  .section-title {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.4rem; color: var(--gold);
+    margin-bottom: 1rem;
+  }
+
+  /* Cards */
+  .p-card {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 16px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+    backdrop-filter: blur(5px);
+  }
+
+  .form-group { margin-bottom: 1rem; }
+  .form-label { display: block; font-size: 0.85rem; opacity: 0.7; margin-bottom: 0.4rem; font-weight: 600; }
+  .form-input {
+    width: 100%; padding: 0.7rem 0.9rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 10px; color: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem;
+    outline: none; transition: border-color 0.2s;
+  }
+  .form-input:focus { border-color: var(--gold); }
+  .form-row { display: grid; grid-template-columns: 1fr auto; gap: 0.75rem; align-items: end; }
+
+  .btn {
+    padding: 0.7rem 1.25rem;
+    border-radius: 10px; border: none;
+    font-family: 'Nunito', sans-serif; font-size: 0.9rem; font-weight: 700;
+    cursor: pointer; transition: all 0.2s; white-space: nowrap;
+  }
+  .btn-gold { background: linear-gradient(90deg, var(--gold), var(--gold2)); color: #1a1a2e; }
+  .btn-gold:hover { transform: scale(1.03); }
+  .btn-danger { background: rgba(231,76,60,0.2); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
+  .btn-danger:hover { background: rgba(231,76,60,0.35); }
+  .btn-teal { background: rgba(26,188,156,0.2); color: var(--teal); border: 1px solid rgba(26,188,156,0.3); }
+  .btn-teal:hover { background: rgba(26,188,156,0.35); }
+  .btn-sm { padding: 0.4rem 0.75rem; font-size: 0.8rem; border-radius: 8px; }
+
+  /* Task list in parent */
+  .task-row {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-wrap: wrap;
+  }
+  .task-row:last-child { border-bottom: none; }
+  .task-pts-badge {
+    background: rgba(255,215,0,0.15);
+    border: 1px solid rgba(255,215,0,0.3);
+    color: var(--gold);
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.8rem; font-weight: 700;
+  }
+  .task-name-p { flex: 1; font-size: 0.95rem; min-width: 120px; }
+
+  /* Mark done section */
+  .mark-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+  }
+  .kid-mark-card {
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 16px; padding: 1.25rem;
+  }
+  .kid-mark-name {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.3rem; margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 0.5rem;
+  }
+  .toggle-wrap {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+  }
+  .toggle-wrap:last-child { border-bottom: none; }
+  .toggle-label { font-size: 0.9rem; flex: 1; }
+  .toggle-pts { font-size: 0.75rem; opacity: 0.5; margin-right: 0.75rem; }
+  .toggle {
+    position: relative; width: 44px; height: 24px;
+    flex-shrink: 0;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.15);
+    border-radius: 999px; cursor: pointer;
+    transition: background 0.3s;
+  }
+  .toggle-slider:before {
+    content: '';
+    position: absolute;
+    width: 18px; height: 18px;
+    left: 3px; top: 3px;
+    background: white; border-radius: 50%;
+    transition: transform 0.3s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--green); }
+  .toggle input:checked + .toggle-slider:before { transform: translateX(20px); }
+
+  /* Kids management */
+  .kid-chip {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.9rem; margin: 0.25rem;
+  }
+  .kid-chip-del {
+    background: none; border: none; color: rgba(255,100,100,0.7);
+    cursor: pointer; font-size: 1rem; line-height: 1;
+    padding: 0; transition: color 0.2s;
+  }
+  .kid-chip-del:hover { color: var(--red); }
+
+  /* Settings */
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    gap: 1rem; flex-wrap: wrap;
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-label { font-size: 0.95rem; }
+  .settings-sub { font-size: 0.8rem; opacity: 0.5; }
+
+  /* Reset day */
+  .reset-box {
+    background: rgba(231,76,60,0.08);
+    border: 1px solid rgba(231,76,60,0.2);
+    border-radius: 12px;
+    padding: 1rem; margin-top: 1rem;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 1rem; flex-wrap: wrap;
+  }
+
+  /* Toast */
+  .toast {
+    position: fixed; bottom: 5rem; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.85);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: white; padding: 0.7rem 1.5rem;
+    border-radius: 999px; font-size: 0.9rem;
+    z-index: 200; pointer-events: none;
+    opacity: 0; transition: opacity 0.3s;
+    backdrop-filter: blur(10px);
+    white-space: nowrap;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Confetti burst */
+  @keyframes confetti-fall {
+    0%{transform:translateY(-20px) rotate(0deg);opacity:1}
+    100%{transform:translateY(80px) rotate(720deg);opacity:0}
+  }
+  .confetti-piece {
+    position: fixed;
+    width: 8px; height: 8px;
+    border-radius: 2px;
+    pointer-events: none;
+    z-index: 300;
+    animation: confetti-fall 0.8s ease-out forwards;
+  }
+
+  /* Screensaver pulse */
+  @keyframes pulse-ring {
+    0%{transform:scale(1);opacity:0.6}
+    100%{transform:scale(1.5);opacity:0}
+  }
+  .pulse-ring {
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 2px solid;
+    animation: pulse-ring 2s ease-out infinite;
+  }
+
+  /* Counter */
+  .counter-wrap { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+  .counter-btn {
+    width:30px; height:30px; border-radius:8px;
+    border:1px solid rgba(255,255,255,0.2);
+    background:rgba(255,255,255,0.08);
+    color:white; font-size:1.1rem; font-weight:700;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.15s; line-height:1;
+  }
+  .counter-btn:hover:not(:disabled) { background:rgba(255,255,255,0.18); }
+  .counter-btn:active:not(:disabled) { transform:scale(0.9); }
+  .counter-btn:disabled { opacity:0.25; cursor:default; }
+  .counter-btn-plus { background:rgba(46,204,113,0.18); border-color:rgba(46,204,113,0.35); }
+  .counter-btn-plus:hover { background:rgba(46,204,113,0.32) !important; }
+  .counter-val {
+    min-width:26px; text-align:center;
+    font-family:'Fredoka One',cursive; font-size:1.1rem;
+  }
+  .task-edit-name, .task-edit-pts { padding:0.45rem 0.7rem; font-size:0.9rem; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
+
+  select.form-input option { background: #24243e; color: white; }
+
+  @media (max-width: 480px) {
+    .kids-grid { padding: 1rem; gap: 1rem; }
+    .kid-points-display { font-size: 2.5rem; }
+    .parent-header { padding: 0.75rem 1rem; }
+    .parent-content { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<div class="stars" id="stars-bg"></div>
+
+<!-- KIDS VIEW -->
+<div id="view-kids">
+  <div class="kids-header">
+    <div class="kids-title">✨ Star Chart ✨</div>
+    <div class="kids-date" id="kids-date"></div>
+  </div>
+  <div class="kids-grid" id="kids-grid"></div>
+  <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
+</div>
+
+<!-- LOGIN VIEW -->
+<div id="view-login">
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-icon">🔐</div>
+      <div class="login-title">Parent Access</div>
+      <div class="login-sub">Enter your password to manage tasks</div>
+      <input class="login-input" type="password" id="login-pw" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="login-btn" onclick="doLogin()">Unlock ✨</button>
+      <div class="login-err" id="login-err"></div>
+      <button class="login-back" onclick="showView('kids')">← Back to Kids View</button>
+    </div>
+  </div>
+</div>
+
+<!-- PARENT VIEW -->
+<div id="view-parent">
+  <div class="parent-wrap">
+    <div class="parent-header">
+      <div class="parent-logo">⭐ Star Chart — Parent</div>
+      <div class="parent-tabs">
+        <button class="tab-btn active" onclick="switchTab('mark',this)">✅ Mark Done</button>
+        <button class="tab-btn" onclick="switchTab('tasks',this)">📋 Tasks</button>
+        <button class="tab-btn" onclick="switchTab('kids',this)">👧 Kids</button>
+        <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
+      </div>
+      <button class="logout-btn" onclick="logout()">Logout</button>
+    </div>
+    <div class="parent-content">
+
+      <!-- MARK DONE TAB -->
+      <div id="tab-mark">
+        <div class="section-title">✅ Mark Tasks Done Today</div>
+        <div class="mark-grid" id="mark-grid"></div>
+      </div>
+
+      <!-- TASKS TAB -->
+      <div id="tab-tasks" style="display:none">
+        <div class="section-title">📋 Manage Tasks</div>
+        <div class="p-card">
+          <div class="form-row">
+            <div>
+              <div class="form-group">
+                <label class="form-label">Task Name</label>
+                <input class="form-input" id="task-name-input" placeholder="e.g. Make your bed" onkeydown="if(event.key==='Enter')addTask()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Points</label>
+                <input class="form-input" id="task-pts-input" type="number" min="1" max="100" placeholder="e.g. 10" style="width:120px">
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-gold" onclick="addTask()">+ Add Task</button>
+        </div>
+        <div class="p-card" id="tasks-list-parent">
+          <div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>
+        </div>
+      </div>
+
+      <!-- KIDS TAB -->
+      <div id="tab-kids" style="display:none">
+        <div class="section-title">👧 Manage Kids</div>
+        <div class="p-card">
+          <div class="form-row">
+            <div>
+              <div class="form-group">
+                <label class="form-label">Child's Name</label>
+                <input class="form-input" id="kid-name-input" placeholder="e.g. Emma" onkeydown="if(event.key==='Enter')addKid()">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Avatar Emoji</label>
+                <input class="form-input" id="kid-emoji-input" placeholder="e.g. 🦄" style="width:100px">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Color Theme</label>
+                <select class="form-input" id="kid-color-input" style="width:160px">
+                  <option value="pink">🌸 Pink</option>
+                  <option value="blue">💙 Blue</option>
+                  <option value="purple">💜 Purple</option>
+                  <option value="teal">💚 Teal</option>
+                  <option value="gold">⭐ Gold</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-gold" onclick="addKid()">+ Add Child</button>
+        </div>
+        <div class="p-card" id="kids-list-parent">
+          <div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>
+        </div>
+      </div>
+
+      <!-- SETTINGS TAB -->
+      <div id="tab-settings" style="display:none">
+        <div class="section-title">⚙️ Settings</div>
+        <div class="p-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Change Password</div>
+              <div class="settings-sub">Current password required</div>
+            </div>
+          </div>
+          <div class="form-group"><label class="form-label">Current Password</label><input class="form-input" id="pw-current" type="password" placeholder="••••••••"></div>
+          <div class="form-group"><label class="form-label">New Password</label><input class="form-input" id="pw-new" type="password" placeholder="••••••••"></div>
+          <div class="form-group"><label class="form-label">Confirm New Password</label><input class="form-input" id="pw-confirm" type="password" placeholder="••••••••"></div>
+          <button class="btn btn-gold" onclick="changePassword()">Update Password</button>
+          <div id="pw-msg" style="margin-top:0.5rem;font-size:0.85rem;min-height:1.2em"></div>
+        </div>
+        <div class="p-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label" style="font-size:1rem">🌙 Screensaver / Kiosk Mode</div>
+              <div class="settings-sub">Open Kids View on another device, go fullscreen (F11), and let it run as a live scoreboard.</div>
+            </div>
+          </div>
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">Auto-refresh interval</div>
+              <div class="settings-sub">Kids view auto-refreshes every N seconds</div>
+            </div>
+            <select class="form-input" id="refresh-select" style="width:130px" onchange="saveRefresh()">
+              <option value="5">5 seconds</option>
+              <option value="10" selected>10 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">1 minute</option>
+            </select>
+          </div>
+        </div>
+        <div class="p-card">
+          <div class="reset-box">
+            <div>
+              <div class="settings-label">🔄 Reset Today's Progress</div>
+              <div class="settings-sub">Clears all "done" marks for today. Tasks and kids are kept.</div>
+            </div>
+            <button class="btn btn-danger btn-sm" onclick="resetDay()">Reset Day</button>
+          </div>
+        </div>
+        <div class="p-card" style="font-size:0.8rem;opacity:0.5;line-height:1.7">
+          💡 <strong>How to use as screensaver:</strong><br>
+          1. Save this file and open it in your browser<br>
+          2. On the kids' laptop, open the file and press F11 for fullscreen<br>
+          3. Use your phone/tablet to open the same file → tap Parent → log in → mark tasks<br>
+          4. Kids view updates automatically!<br><br>
+          All data is saved locally in the browser (localStorage).
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============ DATA ============
+const DEFAULT_PW = 'star1234';
+const EMOJI_LEVELS = [
+  { min: 0,   emoji: '😴', label: 'Just warming up...' },
+  { min: 5,   emoji: '🌱', label: 'Getting started!' },
+  { min: 15,  emoji: '⭐', label: 'Star in the making!' },
+  { min: 30,  emoji: '🌟', label: 'Shining bright!' },
+  { min: 50,  emoji: '🏆', label: 'Champion!' },
+  { min: 75,  emoji: '🚀', label: 'To the moon!' },
+  { min: 100, emoji: '👑', label: 'The Ultimate Star!' },
+];
+const COLORS = {
+  pink:   { main:'#FF6B9D', grad:'#FF6B9D,#FF8EAA', ring:'#FF6B9D' },
+  blue:   { main:'#3498DB', grad:'#3498DB,#5DADE2', ring:'#3498DB' },
+  purple: { main:'#9B59B6', grad:'#9B59B6,#BB8FCE', ring:'#9B59B6' },
+  teal:   { main:'#1ABC9C', grad:'#1ABC9C,#48C9B0', ring:'#1ABC9C' },
+  gold:   { main:'#FFD700', grad:'#FFD700,#FFA500', ring:'#FFD700' },
+};
+
+function load(key, def) { try { return JSON.parse(localStorage.getItem(key)) ?? def; } catch { return def; } }
+function save(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+function getData() { return { kids: load('sc_kids',[]), tasks: load('sc_tasks',[]), done: load('sc_done',{}), pw: load('sc_pw', DEFAULT_PW) }; }
+function saveKids(k){ save('sc_kids',k); }
+function saveTasks(t){ save('sc_tasks',t); }
+function saveDone(d){ save('sc_done',d); }
+function savePw(p){ save('sc_pw',p); }
+
+// ============ UTILS ============
+function showView(v) {
+  document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.remove('active'));
+  document.getElementById('view-'+v).classList.add('active');
+  if(v==='kids') renderKidsView();
+  if(v==='parent') renderParentView();
+}
+function showLogin() { document.getElementById('login-pw').value=''; document.getElementById('login-err').textContent=''; showView('login'); }
+function doLogin() {
+  const pw = document.getElementById('login-pw').value;
+  if(pw === load('sc_pw', DEFAULT_PW)) { showView('parent'); }
+  else { document.getElementById('login-err').textContent='Wrong password. Try again.'; document.getElementById('login-pw').value=''; document.getElementById('login-pw').focus(); }
+}
+function logout() { showView('kids'); }
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function getEmoji(pts) {
+  let level = EMOJI_LEVELS[0];
+  for(const l of EMOJI_LEVELS) if(pts >= l.min) level = l; else break;
+  return level;
+}
+
+function todayKey() { return new Date().toISOString().slice(0,10); }
+
+function starsForPoints(pts) {
+  const count = Math.min(20, Math.floor(pts/5));
+  return '⭐'.repeat(count) || '';
+}
+
+function confetti(x, y) {
+  const colors = ['#FFD700','#FF6B9D','#1ABC9C','#9B59B6','#3498DB','#FF8C00'];
+  for(let i=0;i<12;i++){
+    const el = document.createElement('div');
+    el.className='confetti-piece';
+    el.style.left=(x + (Math.random()-0.5)*60)+'px';
+    el.style.top=(y - 20)+'px';
+    el.style.background=colors[Math.floor(Math.random()*colors.length)];
+    el.style.transform=`rotate(${Math.random()*360}deg)`;
+    el.style.animationDelay=(Math.random()*0.3)+'s';
+    document.body.appendChild(el);
+    setTimeout(()=>el.remove(), 1100);
+  }
+}
+
+// ============ STARS BG ============
+function makeStars() {
+  const c = document.getElementById('stars-bg');
+  for(let i=0;i<120;i++){
+    const s=document.createElement('div'); s.className='star';
+    const sz=Math.random()*2.5+0.5;
+    s.style.cssText=`width:${sz}px;height:${sz}px;left:${Math.random()*100}%;top:${Math.random()*100}%;--d:${2+Math.random()*4}s;animation-delay:${Math.random()*5}s`;
+    c.appendChild(s);
+  }
+}
+
+// ============ KIDS VIEW ============
+function renderKidsView() {
+  const { kids, tasks, done } = getData();
+  const tk = todayKey();
+  const todayDone = done[tk] || {};
+
+  document.getElementById('kids-date').textContent = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  const grid = document.getElementById('kids-grid');
+  if(!kids.length) {
+    grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:3rem;font-size:1.1rem">No children added yet.<br>Ask a parent to set up the app! 🌟</div>';
+    return;
+  }
+
+  grid.innerHTML = kids.map(kid => {
+    const kidDone = todayDone[kid.id] || {};
+    let pts = 0;
+    tasks.forEach(t => { pts += (kidDone[t.id] || 0) * t.points; });
+    const level = getEmoji(pts);
+    const col = COLORS[kid.color] || COLORS.pink;
+    const stars = starsForPoints(pts);
+
+    const taskItems = tasks.map(t => {
+      const count = kidDone[t.id] || 0;
+      return `<li class="kid-task-item">
+        <div class="kid-task-check ${count>0?'done':'pending'}">${count>0?count:''}</div>
+        <span class="kid-task-name">${escHtml(t.name)}</span>
+        <span class="kid-task-pts">${count>0?`×${count} = +${count*t.points}`:'+'+t.points}pts</span>
+      </li>`;
+    }).join('');
+
+    return `<div class="kid-card">
+      <div class="kid-avatar" style="background:linear-gradient(135deg,${col.grad});box-shadow:0 0 30px ${col.main}44">
+        <span style="position:relative;z-index:1">${kid.emoji||'⭐'}</span>
+        <div class="pulse-ring" style="border-color:${col.main};animation-delay:${Math.random()}s"></div>
+      </div>
+      <div class="kid-name" style="color:${col.main}">${escHtml(kid.name)}</div>
+      <div class="kid-emoji-badge">${level.emoji}</div>
+      <div class="kid-emoji-label">${level.label}</div>
+      <div class="kid-points-display">${pts}</div>
+      <div class="kid-points-label">points today</div>
+      ${stars ? `<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>` : ''}
+      ${tasks.length ? `<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}</ul>` : '<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
+    </div>`;
+  }).join('');
+}
+
+// ============ PARENT VIEW ============
+function renderParentView() {
+  renderMarkTab();
+  renderTasksTab();
+  renderKidsTab();
+}
+
+function renderMarkTab() {
+  const { kids, tasks, done } = getData();
+  const tk = todayKey();
+  const todayDone = done[tk] || {};
+  const grid = document.getElementById('mark-grid');
+
+  if(!kids.length || !tasks.length) {
+    grid.innerHTML = '<div class="p-card" style="opacity:0.6">Add some children and tasks first using the tabs above.</div>';
+    return;
+  }
+
+  grid.innerHTML = kids.map(kid => {
+    const kidDone = todayDone[kid.id] || {};
+    let pts = 0; tasks.forEach(t=>{ pts += (kidDone[t.id]||0) * t.points; });
+    const col = COLORS[kid.color] || COLORS.pink;
+    const level = getEmoji(pts);
+
+    const counters = tasks.map(t => {
+      const count = kidDone[t.id] || 0;
+      return `<div class="toggle-wrap">
+        <span class="toggle-label">${escHtml(t.name)}</span>
+        <span class="toggle-pts">+${t.points}pts each</span>
+        <div class="counter-wrap">
+          <button class="counter-btn" onclick="adjustTask('${kid.id}','${t.id}',-1,this)" ${count===0?'disabled':''}>−</button>
+          <span class="counter-val" id="cnt-${kid.id}-${t.id}">${count}</span>
+          <button class="counter-btn counter-btn-plus" onclick="adjustTask('${kid.id}','${t.id}',1,this)">+</button>
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="kid-mark-card">
+      <div class="kid-mark-name">
+        <span>${kid.emoji||'⭐'}</span>
+        <span style="color:${col.main}">${escHtml(kid.name)}</span>
+        <span style="margin-left:auto;font-size:0.9rem;opacity:0.7" id="pts-badge-${kid.id}">${level.emoji} ${pts}pts</span>
+      </div>
+      ${counters}
+    </div>`;
+  }).join('');
+}
+
+function adjustTask(kidId, taskId, delta, btn) {
+  const { done, tasks } = getData();
+  const tk = todayKey();
+  if(!done[tk]) done[tk] = {};
+  if(!done[tk][kidId]) done[tk][kidId] = {};
+  const cur = done[tk][kidId][taskId] || 0;
+  const next = Math.max(0, cur + delta);
+  done[tk][kidId][taskId] = next;
+  saveDone(done);
+
+  // Update counter display
+  document.getElementById('cnt-'+kidId+'-'+taskId).textContent = next;
+  // Disable minus if 0
+  btn.closest('.counter-wrap').querySelector('.counter-btn').disabled = (next === 0);
+
+  // Update pts badge
+  const { tasks: allTasks } = getData();
+  const kidDone = done[tk][kidId] || {};
+  let pts = 0; allTasks.forEach(t=>{ pts += (kidDone[t.id]||0)*t.points; });
+  const level = getEmoji(pts);
+  const badge = document.getElementById('pts-badge-'+kidId);
+  if(badge) badge.textContent = level.emoji+' '+pts+'pts';
+
+  if(delta > 0) {
+    const rect = btn.getBoundingClientRect();
+    confetti(rect.left, rect.top);
+    toast('Awesome! ⭐ +'+tasks.find(t=>t.id===taskId)?.points+'pts');
+  }
+}
+
+function renderTasksTab() {
+  const { tasks } = getData();
+  const list = document.getElementById('tasks-list-parent');
+  if(!tasks.length) { list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>'; return; }
+  list.innerHTML = tasks.map(t => `
+    <div class="task-row" id="trow-${t.id}">
+      <input class="form-input task-edit-name" value="${escHtml(t.name)}" style="flex:1;min-width:100px" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
+      <div style="display:flex;align-items:center;gap:4px">
+        <input class="form-input task-edit-pts" type="number" min="1" value="${t.points}" style="width:70px;text-align:center" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
+        <span style="font-size:0.8rem;opacity:0.5">pts</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">Delete</button>
+    </div>`).join('');
+}
+
+function saveTaskEdit(id) {
+  const tasks = load('sc_tasks',[]);
+  const row = document.getElementById('trow-'+id);
+  if(!row) return;
+  const newName = row.querySelector('.task-edit-name').value.trim();
+  const newPts = parseInt(row.querySelector('.task-edit-pts').value);
+  if(!newName || !newPts || newPts < 1) { toast('Invalid task name or points'); renderTasksTab(); return; }
+  const t = tasks.find(t=>t.id===id);
+  if(!t) return;
+  t.name = newName; t.points = newPts;
+  saveTasks(tasks);
+  renderMarkTab();
+  toast('Task updated ✓');
+}
+
+function renderKidsTab() {
+  const { kids } = getData();
+  const list = document.getElementById('kids-list-parent');
+  if(!kids.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>'; return; }
+  list.innerHTML = kids.map(k => {
+    const col = COLORS[k.color]||COLORS.pink;
+    return `<span class="kid-chip">
+      <span>${k.emoji||'⭐'}</span>
+      <span style="color:${col.main}">${escHtml(k.name)}</span>
+      <button class="kid-chip-del" onclick="deleteKid('${k.id}')">×</button>
+    </span>`;
+  }).join('');
+}
+
+function addTask() {
+  const name = document.getElementById('task-name-input').value.trim();
+  const pts = parseInt(document.getElementById('task-pts-input').value);
+  if(!name){ toast('Enter a task name!'); return; }
+  if(!pts||pts<1){ toast('Enter valid points!'); return; }
+  const tasks = load('sc_tasks',[]);
+  tasks.push({ id: Date.now()+'', name, points: pts });
+  saveTasks(tasks);
+  document.getElementById('task-name-input').value='';
+  document.getElementById('task-pts-input').value='';
+  renderTasksTab();
+  renderMarkTab();
+  toast('Task added! 📋');
+}
+
+function deleteTask(id) {
+  if(!confirm('Delete this task?')) return;
+  saveTasks(load('sc_tasks',[]).filter(t=>t.id!==id));
+  renderTasksTab(); renderMarkTab(); toast('Task removed.');
+}
+
+function addKid() {
+  const name = document.getElementById('kid-name-input').value.trim();
+  const emoji = document.getElementById('kid-emoji-input').value.trim() || '⭐';
+  const color = document.getElementById('kid-color-input').value;
+  if(!name){ toast('Enter a name!'); return; }
+  const kids = load('sc_kids',[]);
+  kids.push({ id: Date.now()+'', name, emoji, color });
+  saveKids(kids);
+  document.getElementById('kid-name-input').value='';
+  document.getElementById('kid-emoji-input').value='';
+  renderKidsTab(); renderMarkTab(); toast(emoji+' '+name+' added!');
+}
+
+function deleteKid(id) {
+  if(!confirm('Remove this child?')) return;
+  saveKids(load('sc_kids',[]).filter(k=>k.id!==id));
+  renderKidsTab(); renderMarkTab(); toast('Child removed.');
+}
+
+function changePassword() {
+  const cur = document.getElementById('pw-current').value;
+  const nw = document.getElementById('pw-new').value;
+  const con = document.getElementById('pw-confirm').value;
+  const msg = document.getElementById('pw-msg');
+  const stored = load('sc_pw', DEFAULT_PW);
+  if(cur !== stored){ msg.style.color='#e74c3c'; msg.textContent='Current password is wrong.'; return; }
+  if(nw.length < 4){ msg.style.color='#e74c3c'; msg.textContent='New password must be at least 4 characters.'; return; }
+  if(nw !== con){ msg.style.color='#e74c3c'; msg.textContent='Passwords do not match.'; return; }
+  savePw(nw);
+  msg.style.color='#2ecc71'; msg.textContent='Password updated! ✓';
+  document.getElementById('pw-current').value='';
+  document.getElementById('pw-new').value='';
+  document.getElementById('pw-confirm').value='';
+}
+
+function saveRefresh() {
+  save('sc_refresh', document.getElementById('refresh-select').value);
+}
+
+function resetDay() {
+  if(!confirm('Reset all done marks for today? Kids\' progress will be cleared.')) return;
+  const done = load('sc_done',{});
+  delete done[todayKey()];
+  saveDone(done);
+  renderMarkTab();
+  toast('Day reset! Fresh start 🌟');
+}
+
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  ['mark','tasks','kids','settings'].forEach(t=>{
+    document.getElementById('tab-'+t).style.display = t===name?'':'none';
+  });
+  if(name==='mark') renderMarkTab();
+  if(name==='tasks') renderTasksTab();
+  if(name==='kids') renderKidsTab();
+}
+
+function escHtml(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// ============ AUTO REFRESH (Kids View) ============
+let refreshTimer;
+function startAutoRefresh() {
+  clearInterval(refreshTimer);
+  const interval = parseInt(load('sc_refresh','10')) * 1000;
+  refreshTimer = setInterval(()=>{
+    const activeView = document.querySelector('[id^="view-"].active');
+    if(activeView && activeView.id === 'view-kids') renderKidsView();
+  }, interval);
+}
+
+// ============ INIT ============
+makeStars();
+showView('kids');
+startAutoRefresh();
+
+// Load refresh setting
+const rs = load('sc_refresh','10');
+const sel = document.getElementById('refresh-select');
+if(sel) { sel.value = rs; }
+</script>
+</body>
+</html>
