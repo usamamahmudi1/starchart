@@ -281,6 +281,34 @@
     padding:0 4px; margin-left:5px; vertical-align:middle;
     line-height:1;
   }
+  .approvals-empty {
+    text-align:center; padding:3rem 1rem; opacity:0.5;
+    font-size:1rem; line-height:1.8;
+  }
+  .approval-card {
+    background:rgba(255,165,0,0.07); border:1px solid rgba(255,165,0,0.2);
+    border-radius:16px; padding:1.25rem; margin-bottom:1rem;
+  }
+  .approval-card-header {
+    display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;
+  }
+  .approval-kid-avatar {
+    width:44px; height:44px; border-radius:50%; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:1.4rem;
+  }
+  .approval-kid-name { font-family:'Fredoka One',cursive; font-size:1.2rem; }
+  .approval-task-row {
+    display:flex; align-items:center; gap:0.75rem;
+    padding:0.6rem 0.75rem; border-radius:10px;
+    background:rgba(255,255,255,0.05); margin-bottom:0.5rem;
+    flex-wrap:wrap;
+  }
+  .approval-task-name { flex:1; font-size:0.95rem; min-width:100px; }
+  .approval-task-pts {
+    font-size:0.8rem; color:#FFA500; font-weight:700;
+    background:rgba(255,165,0,0.15); border:1px solid rgba(255,165,0,0.3);
+    border-radius:999px; padding:2px 8px;
+  }
   .logout-btn {
     padding: 0.4rem 0.9rem;
     border-radius: 999px;
@@ -558,7 +586,13 @@
   .suggest-modal {
     background:#1a1740; border:1px solid rgba(255,255,255,0.15);
     border-radius:20px; padding:1.5rem; width:100%; max-width:380px;
+    max-height:90vh; display:flex; flex-direction:column;
   }
+  .suggest-task-scroll {
+    overflow-y:auto; max-height:50vh; padding-right:4px; margin-bottom:0;
+  }
+  .suggest-task-scroll::-webkit-scrollbar { width:4px; }
+  .suggest-task-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.2); border-radius:2px; }
   .suggest-modal-title { font-family:'Fredoka One',cursive; font-size:1.4rem; margin-bottom:0.25rem; }
   .suggest-modal-sub { font-size:0.85rem; opacity:0.6; margin-bottom:1.25rem; }
   .suggest-task-item {
@@ -662,6 +696,7 @@
       <div class="parent-logo">⭐ Star Chart — Parent</div>
       <div class="parent-tabs">
         <button class="tab-btn active" onclick="switchTab('mark',this)">✅ Mark Done</button>
+        <button class="tab-btn" id="tab-btn-approvals" onclick="switchTab('approvals',this)">⏳ Approvals</button>
         <button class="tab-btn" onclick="switchTab('tasks',this)">📋 Tasks</button>
         <button class="tab-btn" onclick="switchTab('kids',this)">👧 Kids</button>
         <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
@@ -675,6 +710,12 @@
       <div id="tab-mark">
         <div class="section-title">✅ Mark Tasks Done Today</div>
         <div class="mark-grid" id="mark-grid"></div>
+      </div>
+
+      <!-- APPROVALS TAB -->
+      <div id="tab-approvals" style="display:none">
+        <div class="section-title">⏳ Approve Suggestions</div>
+        <div id="approvals-content"></div>
       </div>
 
       <!-- TASKS TAB -->
@@ -892,8 +933,8 @@ function scheduleRender(docId) {
     if(active.id === 'view-parent') {
       const activeTab = document.querySelector('.tab-btn.active');
       const tabName = activeTab ? activeTab.textContent.trim() : '';
-      // Always re-render mark tab when pending changes (approvals live there)
-      if(tabName.includes('Mark') || changedPending) renderMarkTab();
+      if(tabName.includes('Mark'))      renderMarkTab();
+      if(tabName.includes('Approvals') || changedPending) renderApprovalsTab();
       if(tabName.includes('Tasks'))    renderTasksTab();
       if(tabName.includes('Kids'))     renderKidsTab();
       if(tabName.includes('Settings')) renderLevelsEditor();
@@ -908,19 +949,65 @@ function updatePendingBadge() {
   const pending = STATE.pending || {};
   let total = 0;
   Object.values(pending).forEach(taskIds => {
-    Object.values(taskIds).forEach(c => { total += c||0; });
+    Object.values(taskIds).forEach(c => { total += (c||0); });
   });
-  const btn = document.querySelector('.tab-btn[onclick*="mark"]');
+  // Badge on Approvals tab button
+  const btn = document.getElementById('tab-btn-approvals');
   if(!btn) return;
-  // Remove old badge
-  const old = btn.querySelector('.tab-badge');
-  if(old) old.remove();
+  const existing = btn.querySelector('.tab-badge');
+  if(existing) existing.remove();
   if(total > 0) {
     const badge = document.createElement('span');
     badge.className = 'tab-badge';
     badge.textContent = total;
     btn.appendChild(badge);
+    // Also flash the button
+    btn.style.borderColor = 'rgba(255,165,0,0.6)';
+    btn.style.color = '#FFA500';
+  } else {
+    btn.style.borderColor = '';
+    btn.style.color = '';
   }
+}
+
+function renderApprovalsTab() {
+  const { kids, tasks } = getData();
+  const el = document.getElementById('approvals-content');
+  if(!el) return;
+  const pending = STATE.pending || {};
+  const entries = Object.entries(pending).filter(([kidId, taskIds]) =>
+    Object.values(taskIds).some(c=>c>0)
+  );
+  if(!entries.length) {
+    el.innerHTML = '<div class="approvals-empty">🎉 No pending suggestions<br><span style="font-size:0.85rem">When a child taps "I did something!", it will appear here for you to approve.</span></div>';
+    return;
+  }
+  el.innerHTML = entries.map(([kidId, taskIds]) => {
+    const kid = kids.find(k=>k.id===kidId);
+    if(!kid) return '';
+    const col = COLORS[kid.color]||COLORS.pink;
+    const taskRows = Object.entries(taskIds).filter(([,c])=>c>0).map(([taskId, count]) => {
+      const task = tasks.find(t=>t.id===taskId);
+      if(!task) return '';
+      return `<div class="approval-task-row">
+        <span class="approval-task-name">${escHtml(task.name)}</span>
+        <span class="approval-task-pts">×${count} = +${task.points*count}pts</span>
+        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count})">✓ Approve</button>
+        <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
+      </div>`;
+    }).join('');
+    if(!taskRows.replace(/<div[^>]*><\/div>/g,'').trim()) return '';
+    return `<div class="approval-card">
+      <div class="approval-card-header">
+        <div class="approval-kid-avatar" style="background:linear-gradient(135deg,${col.grad})">${kid.emoji||'⭐'}</div>
+        <div>
+          <div class="approval-kid-name" style="color:${col.main}">${escHtml(kid.name)}</div>
+          <div style="font-size:0.8rem;opacity:0.6">is asking for approval</div>
+        </div>
+      </div>
+      ${taskRows}
+    </div>`;
+  }).join('');
 }
 
 function startListeners() {
@@ -1086,7 +1173,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -1500,14 +1587,15 @@ function renderHistoryTab() {
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','tasks','kids','settings','history'].forEach(t=>{
-    document.getElementById('tab-'+t).style.display=t===name?'':'none';
+  ['mark','approvals','tasks','kids','settings','history'].forEach(t=>{
+    const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
-  if(name==='mark')     renderMarkTab();
-  if(name==='tasks')    renderTasksTab();
-  if(name==='kids')     renderKidsTab();
-  if(name==='settings') renderLevelsEditor();
-  if(name==='history')  renderHistoryTab();
+  if(name==='mark')      renderMarkTab();
+  if(name==='approvals') renderApprovalsTab();
+  if(name==='tasks')     renderTasksTab();
+  if(name==='kids')      renderKidsTab();
+  if(name==='settings')  renderLevelsEditor();
+  if(name==='history')   renderHistoryTab();
 }
 
 // ============ INIT ============
@@ -1537,6 +1625,8 @@ async function init() {
   document.getElementById('loading-screen').style.display='none';
   showView('kids');
   startListeners();
+  // Update badge immediately after load so existing approvals show
+  setTimeout(updatePendingBadge, 100);
 
   // Load refresh setting from localStorage (device-specific preference)
   const rs = localStorage.getItem('sc_refresh')||'10';
@@ -1560,7 +1650,7 @@ window.openSuggestModal=openSuggestModal; window.toggleSuggest=toggleSuggest;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.rejectTask=rejectTask;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
-window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendingBadge;
+window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
 
 <!-- Suggestion Modal (kids side) -->
@@ -1568,8 +1658,8 @@ window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendin
   <div class="suggest-modal">
     <div class="suggest-modal-title" id="suggest-modal-kid-name">I did something! 🙋</div>
     <div class="suggest-modal-sub">Tap the tasks you completed — your parent will approve them!</div>
-    <div id="suggest-task-list"></div>
-    <div style="display:flex;gap:0.75rem;margin-top:1rem">
+    <div class="suggest-task-scroll" id="suggest-task-list"></div>
+    <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-shrink:0">
       <button class="btn btn-gold" style="flex:1" onclick="submitSuggestions()">✋ Tell Parent!</button>
       <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeSuggestModal()">Cancel</button>
     </div>
