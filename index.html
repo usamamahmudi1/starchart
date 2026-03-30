@@ -869,8 +869,28 @@ function syncBar(msg, error=false) {
 }
 
 // ============ REAL-TIME LISTENERS ============
+// Debounce render so all 5 snapshots firing at once only cause 1 redraw
+let renderDebounceTimer = null;
+function scheduleRender() {
+  clearTimeout(renderDebounceTimer);
+  renderDebounceTimer = setTimeout(() => {
+    const active = document.querySelector('[id^="view-"].active');
+    if(!active) return;
+    if(active.id === 'view-kids') { renderKidsView(); return; }
+    if(active.id === 'view-parent') {
+      const activeTab = document.querySelector('.tab-btn.active');
+      const tabName = activeTab ? activeTab.textContent.trim() : '';
+      if(tabName.includes('Mark'))     renderMarkTab();
+      if(tabName.includes('Tasks'))    renderTasksTab();
+      if(tabName.includes('Kids'))     renderKidsTab();
+      if(tabName.includes('Settings')) renderLevelsEditor();
+      if(tabName.includes('History'))  renderHistoryTab();
+    }
+  }, 80); // wait 80ms — all simultaneous snapshots collapse into one render
+}
+
 function startListeners() {
-  // Unsubscribe any old listeners
+  // Unsubscribe any old listeners first
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
@@ -879,27 +899,16 @@ function startListeners() {
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
       if(!snap.exists()) return;
       const data = snap.data();
-      if(docId === 'kids')     { STATE.kids  = data.list  || []; }
-      if(docId === 'tasks')    { STATE.tasks = data.list  || []; }
-      if(docId === 'done')     { STATE.done  = data.days  || {}; }
+      if(docId === 'kids')     { STATE.kids    = data.list     || []; }
+      if(docId === 'tasks')    { STATE.tasks   = data.list     || []; }
+      if(docId === 'done')     { STATE.done    = data.days     || {}; }
       if(docId === 'settings') {
         STATE.pw     = data.pw     || DEFAULT_PW;
         STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
       }
-      if(docId === 'pending') { STATE.pending = data.requests || {}; }
-      // Re-render whichever view is currently active
-      const active = document.querySelector('[id^="view-"].active');
-      if(!active) return;
-      if(active.id === 'view-kids') renderKidsView();
-      if(active.id === 'view-parent') {
-        const activeTab = document.querySelector('.tab-btn.active');
-        const tabName = activeTab ? activeTab.textContent.trim() : '';
-        if(tabName.includes('Mark')) renderMarkTab();
-        if(tabName.includes('Tasks')) renderTasksTab();
-        if(tabName.includes('Kids')) renderKidsTab();
-        if(tabName.includes('Settings')) renderLevelsEditor();
-      }
-    }, (err) => {
+      if(docId === 'pending')  { STATE.pending = data.requests || {}; }
+      scheduleRender();
+    }, () => {
       syncBar('⚠️ Connection issue. Retrying...', true);
     });
     unsubscribers.push(unsub);
