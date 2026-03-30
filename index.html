@@ -530,6 +530,82 @@
     animation:spin 0.8s linear infinite;
   }
   .loading-text { font-family:"Fredoka One",cursive; font-size:1.4rem; color:var(--gold); }
+
+  /* ── Pending suggestions (kids view) ── */
+  .suggest-btn {
+    margin-top:0.75rem; width:100%;
+    padding:0.55rem 0;
+    background:rgba(255,215,0,0.12);
+    border:1px dashed rgba(255,215,0,0.4);
+    border-radius:10px; color:var(--gold);
+    font-family:'Nunito',sans-serif; font-size:0.85rem; font-weight:700;
+    cursor:pointer; transition:all 0.2s; letter-spacing:0.03em;
+  }
+  .suggest-btn:hover { background:rgba(255,215,0,0.22); }
+  .suggest-modal-overlay {
+    position:fixed; inset:0; z-index:400;
+    background:rgba(0,0,0,0.6); backdrop-filter:blur(6px);
+    display:flex; align-items:center; justify-content:center; padding:1rem;
+  }
+  .suggest-modal {
+    background:#1a1740; border:1px solid rgba(255,255,255,0.15);
+    border-radius:20px; padding:1.5rem; width:100%; max-width:380px;
+  }
+  .suggest-modal-title { font-family:'Fredoka One',cursive; font-size:1.4rem; margin-bottom:0.25rem; }
+  .suggest-modal-sub { font-size:0.85rem; opacity:0.6; margin-bottom:1.25rem; }
+  .suggest-task-item {
+    display:flex; align-items:center; gap:0.75rem;
+    padding:0.6rem 0.75rem; border-radius:10px;
+    background:rgba(255,255,255,0.05); margin-bottom:0.5rem;
+    cursor:pointer; border:1px solid transparent; transition:all 0.15s;
+  }
+  .suggest-task-item:hover { background:rgba(255,215,0,0.1); border-color:rgba(255,215,0,0.3); }
+  .suggest-task-item.selected { background:rgba(255,215,0,0.15); border-color:rgba(255,215,0,0.5); }
+  .suggest-task-check { width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);flex-shrink:0; }
+  .suggest-task-item.selected .suggest-task-check { background:var(--gold);border-color:var(--gold); }
+  .pending-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    background:rgba(255,165,0,0.2); border:1px solid rgba(255,165,0,0.4);
+    color:#FFA500; border-radius:999px; padding:2px 8px; font-size:0.75rem; font-weight:700;
+  }
+  /* ── Approval panel in parent Mark Done tab ── */
+  .approval-section {
+    background:rgba(255,165,0,0.08); border:1px solid rgba(255,165,0,0.25);
+    border-radius:14px; padding:1rem; margin-bottom:1rem;
+  }
+  .approval-title { font-size:0.85rem; font-weight:700; color:#FFA500; margin-bottom:0.75rem; letter-spacing:0.05em; text-transform:uppercase; }
+  .approval-row {
+    display:flex; align-items:center; gap:0.75rem;
+    padding:0.5rem 0; border-bottom:1px solid rgba(255,255,255,0.06); flex-wrap:wrap;
+  }
+  .approval-row:last-child { border-bottom:none; }
+  .approval-info { flex:1; min-width:100px; }
+  .approval-name { font-size:0.9rem; font-weight:700; }
+  .approval-task { font-size:0.8rem; opacity:0.6; }
+  .btn-approve { background:rgba(46,204,113,0.2);border:1px solid rgba(46,204,113,0.4);color:#2ecc71; }
+  .btn-approve:hover { background:rgba(46,204,113,0.35); }
+  .btn-reject  { background:rgba(231,76,60,0.15);border:1px solid rgba(231,76,60,0.3);color:#e74c3c; }
+  .btn-reject:hover  { background:rgba(231,76,60,0.28); }
+  /* ── Kid edit inline ── */
+  .kid-edit-row {
+    display:grid; grid-template-columns:60px 1fr auto auto; gap:0.5rem;
+    align-items:center; background:rgba(255,255,255,0.05);
+    border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:0.6rem 0.75rem;
+    margin-bottom:0.5rem;
+  }
+  .kid-edit-emoji { font-size:1.6rem; background:none; border:none; cursor:pointer; padding:0; }
+  /* ── History tab ── */
+  .history-day { margin-bottom:1.25rem; }
+  .history-day-title {
+    font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
+    opacity:0.5; margin-bottom:0.5rem;
+  }
+  .history-kid-row {
+    display:flex; align-items:center; gap:0.75rem;
+    padding:0.5rem 0.75rem; border-radius:10px;
+    background:rgba(255,255,255,0.04); margin-bottom:0.35rem;
+  }
+  .history-pts { font-family:'Fredoka One',cursive; color:var(--gold); font-size:1.1rem; margin-left:auto; }
 </style>
 </head>
 <body>
@@ -581,6 +657,7 @@
         <button class="tab-btn" onclick="switchTab('tasks',this)">📋 Tasks</button>
         <button class="tab-btn" onclick="switchTab('kids',this)">👧 Kids</button>
         <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
+        <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
       </div>
       <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
@@ -717,6 +794,14 @@
         </div>
       </div>
 
+
+      <!-- HISTORY TAB -->
+      <div id="tab-history" style="display:none">
+        <div class="section-title">📅 Points History</div>
+        <div class="p-card" id="history-content">
+          <div style="opacity:0.5;font-size:0.9rem">No history yet.</div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -761,7 +846,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{} };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -789,7 +874,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings'];
+  const docs = ['kids','tasks','done','settings','pending'];
   docs.forEach(docId => {
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
       if(!snap.exists()) return;
@@ -801,6 +886,7 @@ function startListeners() {
         STATE.pw     = data.pw     || DEFAULT_PW;
         STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
       }
+      if(docId === 'pending') { STATE.pending = data.requests || {}; }
       // Re-render whichever view is currently active
       const active = document.querySelector('[id^="view-"].active');
       if(!active) return;
@@ -826,6 +912,7 @@ async function saveTasks(tasks)  { STATE.tasks=tasks; await fbSet('tasks',   { l
 async function saveDone(done)    { STATE.done=done;   await fbSet('done',    { days: done }); }
 async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ pw, levels: STATE.levels }); }
 async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls }); }
+async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
 
 function getData()  { return STATE; }
 function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels : DEFAULT_EMOJI_LEVELS; }
@@ -908,7 +995,7 @@ function renderKidsView() {
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:3rem;font-size:1.1rem">No children added yet.<br>Ask a parent to set up the app! 🌟</div>';
     return;
   }
-  grid.innerHTML = kids.map(kid => {
+  grid.innerHTML += kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const level = getEmoji(pts);
@@ -934,6 +1021,7 @@ function renderKidsView() {
       <div class="kid-points-label">points today</div>
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
       ${tasks.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
+      ${tasks.length?`<button class="suggest-btn" onclick="openSuggestModal('${kid.id}')">✋ I did something!</button>`:''}
     </div>`;
   }).join('');
 }
@@ -947,6 +1035,32 @@ function renderMarkTab() {
   const todayDone = done[tk] || {};
   const grid = document.getElementById('mark-grid');
   if(!kids.length||!tasks.length) { grid.innerHTML='<div class="p-card" style="opacity:0.6">Add some children and tasks first using the tabs above.</div>'; return; }
+  // ── Pending approvals section ──
+  const tk2 = todayKey();
+  const pending = STATE.pending || {};
+  const pendingRows = [];
+  Object.entries(pending).forEach(([kidId, taskIds])=>{
+    const kid = kids.find(k=>k.id===kidId); if(!kid) return;
+    const col = COLORS[kid.color]||COLORS.pink;
+    Object.entries(taskIds).forEach(([taskId, count])=>{
+      if(!count) return;
+      const task = tasks.find(t=>t.id===taskId); if(!task) return;
+      pendingRows.push(`<div class="approval-row">
+        <div class="kid-avatar" style="width:32px;height:32px;font-size:1.1rem;background:linear-gradient(135deg,${col.grad});border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${kid.emoji||'⭐'}</div>
+        <div class="approval-info">
+          <div class="approval-name">${escHtml(kid.name)}</div>
+          <div class="approval-task">${escHtml(task.name)} × ${count}</div>
+        </div>
+        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count})">✓ Approve</button>
+        <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
+      </div>`);
+    });
+  });
+  let approvalHtml = '';
+  if(pendingRows.length){
+    approvalHtml = `<div class="approval-section"><div class="approval-title">⏳ Waiting for your approval (${pendingRows.length})</div>${pendingRows.join('')}</div>`;
+  }
+  grid.innerHTML = approvalHtml;
   grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id]||{};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
@@ -1032,14 +1146,15 @@ function renderKidsTab() {
   const { kids } = getData();
   const list = document.getElementById('kids-list-parent');
   if(!kids.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>'; return; }
-  list.innerHTML = kids.map(k=>{
+  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.5rem">` + kids.map(k=>{
     const col = COLORS[k.color]||COLORS.pink;
-    return `<span class="kid-chip">
-      <span>${k.emoji||'⭐'}</span>
-      <span style="color:${col.main}">${escHtml(k.name)}</span>
-      <button class="kid-chip-del" onclick="deleteKid('${k.id}')">×</button>
-    </span>`;
-  }).join('');
+    return `<div style="display:flex;align-items:center;gap:0.75rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:0.6rem 0.9rem">
+      <span style="font-size:1.5rem">${k.emoji||'⭐'}</span>
+      <span style="color:${col.main};font-weight:700;flex:1">${escHtml(k.name)}</span>
+      <button class="btn btn-teal btn-sm" onclick="openKidEdit('${k.id}')">✏️ Edit</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteKid('${k.id}')">Delete</button>
+    </div>`;
+  }).join('') + '</div>';
 }
 
 async function addTask() {
@@ -1201,16 +1316,140 @@ async function resetLevels() {
   toast('Reset to defaults ✓');
 }
 
+
+// ============ SUGGESTION FLOW ============
+let suggestKidId = null;
+let suggestSelected = new Set();
+
+function openSuggestModal(kidId) {
+  suggestKidId = kidId;
+  suggestSelected = new Set();
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  const tk = todayKey();
+  const done = (STATE.done[tk]||{})[kidId]||{};
+  const pending = (STATE.pending||{})[kidId]||{};
+  document.getElementById('suggest-modal-kid-name').textContent = (kid?kid.emoji+' '+kid.name:'') + ' — I did something! 🙋';
+  const list = document.getElementById('suggest-task-list');
+  list.innerHTML = STATE.tasks.map(t => {
+    const doneCount = done[t.id]||0;
+    const pendCount = pending[t.id]||0;
+    const badge = pendCount ? `<span class="pending-badge">⏳ ${pendCount} waiting</span>` : '';
+    return `<div class="suggest-task-item" id="sug-${t.id}" onclick="toggleSuggest('${t.id}')">
+      <div class="suggest-task-check"></div>
+      <div style="flex:1">
+        <div style="font-size:0.9rem;font-weight:700">${escHtml(t.name)}</div>
+        <div style="font-size:0.75rem;opacity:0.5">+${t.points}pts${doneCount?' · done '+doneCount+'×':''}</div>
+      </div>
+      ${badge}
+    </div>`;
+  }).join('') || '<div style="opacity:0.5;font-size:0.85rem">No tasks set up yet!</div>';
+  document.getElementById('suggest-overlay').style.display='flex';
+}
+
+function toggleSuggest(taskId) {
+  const el = document.getElementById('sug-'+taskId);
+  if(suggestSelected.has(taskId)){ suggestSelected.delete(taskId); el.classList.remove('selected'); }
+  else { suggestSelected.add(taskId); el.classList.add('selected'); }
+}
+
+function closeSuggestModal() { document.getElementById('suggest-overlay').style.display='none'; }
+
+async function submitSuggestions() {
+  if(!suggestSelected.size){ toast('Tap at least one task!'); return; }
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(!pending[suggestKidId]) pending[suggestKidId]={};
+  suggestSelected.forEach(taskId=>{
+    pending[suggestKidId][taskId] = (pending[suggestKidId][taskId]||0)+1;
+  });
+  await savePending(pending);
+  closeSuggestModal();
+  const kid = STATE.kids.find(k=>k.id===suggestKidId);
+  toast((kid?kid.emoji+' ':'')+'Request sent to parent! ⏳');
+}
+
+async function approveTask(kidId, taskId, count) {
+  // Add to done
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk][kidId]) done[tk][kidId]={};
+  done[tk][kidId][taskId] = (done[tk][kidId][taskId]||0) + count;
+  // Remove from pending
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
+  await Promise.all([saveDone(done), savePending(pending)]);
+  const task = STATE.tasks.find(t=>t.id===taskId);
+  const kid  = STATE.kids.find(k=>k.id===kidId);
+  toast('✓ Approved! '+(kid?kid.emoji:'')+(task?' +'+task.points*count+'pts':''));
+}
+
+async function rejectTask(kidId, taskId) {
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
+  await savePending(pending);
+  toast('Request rejected.');
+}
+
+// ============ KID EDIT MODAL ============
+function openKidEdit(id) {
+  const k = STATE.kids.find(k=>k.id===id); if(!k) return;
+  document.getElementById('kid-edit-id').value   = id;
+  document.getElementById('kid-edit-name').value  = k.name;
+  document.getElementById('kid-edit-emoji').value = k.emoji||'⭐';
+  document.getElementById('kid-edit-color').value = k.color||'pink';
+  document.getElementById('kid-edit-overlay').style.display='flex';
+}
+function closeKidEdit() { document.getElementById('kid-edit-overlay').style.display='none'; }
+async function saveKidEdit() {
+  const id    = document.getElementById('kid-edit-id').value;
+  const name  = document.getElementById('kid-edit-name').value.trim();
+  const emoji = document.getElementById('kid-edit-emoji').value.trim()||'⭐';
+  const color = document.getElementById('kid-edit-color').value;
+  if(!name){ toast('Name cannot be empty!'); return; }
+  const kids = JSON.parse(JSON.stringify(STATE.kids));
+  const k = kids.find(k=>k.id===id); if(!k) return;
+  k.name=name; k.emoji=emoji; k.color=color;
+  await saveKids(kids);
+  closeKidEdit();
+  toast(emoji+' '+name+' updated!');
+}
+
+// ============ HISTORY TAB ============
+function renderHistoryTab() {
+  const { kids, tasks, done } = getData();
+  const el = document.getElementById('history-content');
+  const days = Object.keys(done).sort().reverse().slice(0,30);
+  if(!days.length){ el.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No history yet.</div>'; return; }
+  el.innerHTML = days.map(day=>{
+    const dayDone = done[day]||{};
+    const rows = kids.map(kid=>{
+      const kidDone = dayDone[kid.id]||{};
+      let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+      const col=COLORS[kid.color]||COLORS.pink;
+      const lv=getEmoji(pts);
+      return `<div class="history-kid-row">
+        <span style="font-size:1.3rem">${kid.emoji||'⭐'}</span>
+        <span style="color:${col.main};font-weight:700">${escHtml(kid.name)}</span>
+        <span style="opacity:0.5;font-size:0.8rem">${lv.emoji} ${lv.label}</span>
+        <span class="history-pts">${pts} pts</span>
+      </div>`;
+    }).join('');
+    const label = day===todayKey()?'Today':new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    return `<div class="history-day"><div class="history-day-title">${label}</div>${rows}</div>`;
+  }).join('');
+}
+
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','tasks','kids','settings'].forEach(t=>{
+  ['mark','tasks','kids','settings','history'].forEach(t=>{
     document.getElementById('tab-'+t).style.display=t===name?'':'none';
   });
   if(name==='mark')     renderMarkTab();
   if(name==='tasks')    renderTasksTab();
   if(name==='kids')     renderKidsTab();
   if(name==='settings') renderLevelsEditor();
+  if(name==='history')  renderHistoryTab();
 }
 
 // ============ INIT ============
@@ -1219,17 +1458,19 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
       fbGet('settings',{ pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS }),
+      fbGet('pending', { requests:{} }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
     STATE.done   = doneData.days   || {};
     STATE.pw     = settingsData.pw     || DEFAULT_PW;
     STATE.levels = settingsData.levels || DEFAULT_EMOJI_LEVELS;
+    STATE.pending = pendingData.requests || {};
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -1256,6 +1497,56 @@ window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
 window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
 window.resetLevels=resetLevels;
+window.openSuggestModal=openSuggestModal; window.toggleSuggest=toggleSuggest;
+window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
+window.approveTask=approveTask; window.rejectTask=rejectTask;
+window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
+window.renderHistoryTab=renderHistoryTab;
 </script>
+
+<!-- Suggestion Modal (kids side) -->
+<div class="suggest-modal-overlay" id="suggest-overlay" style="display:none" onclick="if(event.target===this)closeSuggestModal()">
+  <div class="suggest-modal">
+    <div class="suggest-modal-title" id="suggest-modal-kid-name">I did something! 🙋</div>
+    <div class="suggest-modal-sub">Tap the tasks you completed — your parent will approve them!</div>
+    <div id="suggest-task-list"></div>
+    <div style="display:flex;gap:0.75rem;margin-top:1rem">
+      <button class="btn btn-gold" style="flex:1" onclick="submitSuggestions()">✋ Tell Parent!</button>
+      <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeSuggestModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kid Edit Modal -->
+<div class="suggest-modal-overlay" id="kid-edit-overlay" style="display:none" onclick="if(event.target===this)closeKidEdit()">
+  <div class="suggest-modal">
+    <div class="suggest-modal-title">✏️ Edit Child</div>
+    <div class="suggest-modal-sub">Change name, emoji, or color theme</div>
+    <input type="hidden" id="kid-edit-id">
+    <div class="form-group" style="margin-bottom:0.75rem">
+      <label class="form-label">Name</label>
+      <input class="form-input" id="kid-edit-name" placeholder="Child name">
+    </div>
+    <div class="form-group" style="margin-bottom:0.75rem">
+      <label class="form-label">Avatar Emoji</label>
+      <input class="form-input" id="kid-edit-emoji" placeholder="e.g. 🦄" style="width:100px">
+    </div>
+    <div class="form-group" style="margin-bottom:1rem">
+      <label class="form-label">Color Theme</label>
+      <select class="form-input" id="kid-edit-color" style="width:160px">
+        <option value="pink">🌸 Pink</option>
+        <option value="blue">💙 Blue</option>
+        <option value="purple">💜 Purple</option>
+        <option value="teal">💚 Teal</option>
+        <option value="gold">⭐ Gold</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:0.75rem">
+      <button class="btn btn-gold" style="flex:1" onclick="saveKidEdit()">💾 Save</button>
+      <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeKidEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
