@@ -896,6 +896,7 @@ function startListeners() {
 
   const docs = ['kids','tasks','done','settings','pending'];
   docs.forEach(docId => {
+    let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
       if(!snap.exists()) return;
       const data = snap.data();
@@ -907,6 +908,8 @@ function startListeners() {
         STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
       }
       if(docId === 'pending')  { STATE.pending = data.requests || {}; }
+      // First snapshot is just confirming what we already fetched in init — skip render
+      if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender();
     }, () => {
       syncBar('⚠️ Connection issue. Retrying...', true);
