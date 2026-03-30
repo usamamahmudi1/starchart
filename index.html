@@ -930,6 +930,8 @@ function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels 
 function showView(v) {
   document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
+  // Only render if init has completed — listeners handle rendering during init
+  if(!STATE._ready) return;
   if(v==='kids')   renderKidsView();
   if(v==='parent') renderParentView();
 }
@@ -1004,7 +1006,7 @@ function renderKidsView() {
     grid.innerHTML='<div style="grid-column:1/-1;text-align:center;opacity:0.5;padding:3rem;font-size:1.1rem">No children added yet.<br>Ask a parent to set up the app! 🌟</div>';
     return;
   }
-  grid.innerHTML += kids.map(kid => {
+  grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const level = getEmoji(pts);
@@ -1069,8 +1071,7 @@ function renderMarkTab() {
   if(pendingRows.length){
     approvalHtml = `<div class="approval-section"><div class="approval-title">⏳ Waiting for your approval (${pendingRows.length})</div>${pendingRows.join('')}</div>`;
   }
-  grid.innerHTML = approvalHtml;
-  grid.innerHTML = kids.map(kid => {
+  grid.innerHTML = approvalHtml + kids.map(kid => {
     const kidDone = todayDone[kid.id]||{};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const col   = COLORS[kid.color]||COLORS.pink;
@@ -1484,6 +1485,7 @@ async function init() {
     console.warn('Init load failed, using defaults', e);
   }
 
+  STATE._ready = true;
   document.getElementById('loading-screen').style.display='none';
   showView('kids');
   startListeners();
