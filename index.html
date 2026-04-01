@@ -1178,7 +1178,7 @@ function renderKidsView() {
   grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
-    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
@@ -1256,7 +1256,7 @@ function renderMarkTab() {
   grid.innerHTML = approvalHtml + kids.map(kid => {
     const kidDone = todayDone[kid.id]||{};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
-    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const col   = COLORS[kid.color]||COLORS.pink;
     const level = getEmoji(pts);
@@ -1623,9 +1623,9 @@ async function approveDeed(kidId, encodedKey) {
   if(!done[tk]) done[tk]={};
   if(!done[tk][kidId]) done[tk][kidId]={};
   // Use the deed key itself as the task id in done, store points in a deeds map
-  if(!done[tk].__deeds__) done[tk].__deeds__ = {};
-  if(!done[tk].__deeds__[kidId]) done[tk].__deeds__[kidId] = [];
-  done[tk].__deeds__[kidId].push({ desc: deedDesc, pts });
+  if(!done[tk].xdeeds) done[tk].xdeeds = {};
+  if(!done[tk].xdeeds[kidId]) done[tk].xdeeds[kidId] = [];
+  done[tk].xdeeds[kidId].push({ desc: deedDesc, pts });
   // Remove from pending
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
@@ -1669,7 +1669,7 @@ function renderHistoryTab() {
     const rows = kids.map(kid=>{
       const kidDone = dayDone[kid.id]||{};
       let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
-    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
       const col=COLORS[kid.color]||COLORS.pink;
       const lv=getEmoji(pts);
