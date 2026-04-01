@@ -524,17 +524,16 @@
     font-family:'Fredoka One',cursive; font-size:1.1rem;
   }
   .task-edit-name, .task-edit-pts { padding:0.45rem 0.7rem; font-size:0.9rem; }
-  .reorder-btns { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
-  .reorder-btn {
-    width:26px; height:22px; border-radius:6px;
-    border:1px solid rgba(255,255,255,0.15);
-    background:rgba(255,255,255,0.06);
-    color:rgba(255,255,255,0.6); font-size:0.75rem;
-    cursor:pointer; display:flex; align-items:center; justify-content:center;
-    transition:all 0.15s; line-height:1;
+  .drag-handle {
+    width:28px; flex-shrink:0; cursor:grab; display:flex; align-items:center;
+    justify-content:center; opacity:0.4; font-size:1rem; user-select:none;
+    transition:opacity 0.15s;
   }
-  .reorder-btn:hover:not(:disabled) { background:rgba(255,255,255,0.18); color:white; }
-  .reorder-btn:disabled { opacity:0.2; cursor:default; }
+  .drag-handle:hover { opacity:0.9; }
+  .drag-handle:active { cursor:grabbing; }
+  .task-row { transition:opacity 0.15s, transform 0.15s; }
+  .task-row.drag-over { border-color:rgba(255,215,0,0.6) !important; background:rgba(255,215,0,0.08) !important; }
+  .task-row.dragging { opacity:0.4; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
@@ -677,6 +676,26 @@
     background:rgba(255,255,255,0.04); margin-bottom:0.35rem;
   }
   .history-pts { font-family:'Fredoka One',cursive; color:var(--gold); font-size:1.1rem; margin-left:auto; }
+
+  /* ── Level-up celebration ── */
+  #celebration-canvas {
+    position:fixed; inset:0; z-index:350;
+    pointer-events:none; display:none;
+  }
+  .levelup-banner {
+    position:fixed; top:50%; left:50%; z-index:360;
+    transform:translate(-50%,-50%) scale(0);
+    background:linear-gradient(135deg,#1a1740,#2d1b69);
+    border:2px solid rgba(255,215,0,0.6);
+    border-radius:24px; padding:2rem 2.5rem;
+    text-align:center; pointer-events:none;
+    transition:transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    box-shadow:0 0 60px rgba(255,215,0,0.3);
+  }
+  .levelup-banner.show { transform:translate(-50%,-50%) scale(1); }
+  .levelup-emoji { font-size:4rem; display:block; margin-bottom:0.5rem; }
+  .levelup-text { font-family:'Fredoka One',cursive; font-size:1.8rem; color:#FFD700; }
+  .levelup-sub { font-size:1rem; opacity:0.7; margin-top:0.25rem; }
 </style>
 </head>
 <body>
@@ -1180,6 +1199,9 @@ function renderKidsView() {
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
+    // Level-up detection — only on kids view (the screen the kids watch)
+    const active = document.querySelector('[id^="view-"].active');
+    if(active && active.id==='view-kids') checkLevelUp(kid.id, pts);
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
     const stars  = starsForPoints(pts);
@@ -1312,11 +1334,13 @@ function renderTasksTab() {
   const list = document.getElementById('tasks-list-parent');
   if(!tasks.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>'; return; }
   list.innerHTML = tasks.map((t,i)=>`
-    <div class="task-row" id="trow-${t.id}">
-      <div class="reorder-btns">
-        <button class="reorder-btn" onclick="moveTask('${t.id}',-1)" ${i===0?'disabled':''} title="Move up">▲</button>
-        <button class="reorder-btn" onclick="moveTask('${t.id}',1)" ${i===tasks.length-1?'disabled':''} title="Move down">▼</button>
-      </div>
+    <div class="task-row" id="trow-${t.id}" draggable="true" data-id="${t.id}"
+      ondragstart="onDragStart(event,'${t.id}')"
+      ondragover="onDragOver(event,'${t.id}')"
+      ondragleave="onDragLeave(event)"
+      ondrop="onDrop(event,'${t.id}')"
+      ondragend="onDragEnd(event)">
+      <div class="drag-handle" title="Drag to reorder">⠿</div>
       <input class="form-input task-edit-name" value="${escHtml(t.name)}" style="flex:1;min-width:80px" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
       <div style="display:flex;align-items:center;gap:4px">
         <input class="form-input task-edit-pts" type="number" min="1" value="${t.points}" style="width:65px;text-align:center" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
@@ -1326,14 +1350,38 @@ function renderTasksTab() {
     </div>`).join('');
 }
 
-async function moveTask(id, dir) {
+// ── Drag-and-drop reorder ──
+let dragSrcId = null;
+
+function onDragStart(e, id) {
+  dragSrcId = id;
+  e.currentTarget.classList.add('dragging');
+  e.dataTransfer.effectAllowed = 'move';
+}
+function onDragOver(e, id) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  if(id !== dragSrcId) {
+    document.querySelectorAll('.task-row').forEach(r=>r.classList.remove('drag-over'));
+    e.currentTarget.classList.add('drag-over');
+  }
+}
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDragEnd(e) {
+  e.currentTarget.classList.remove('dragging');
+  document.querySelectorAll('.task-row').forEach(r=>r.classList.remove('drag-over','dragging'));
+}
+async function onDrop(e, targetId) {
+  e.preventDefault();
+  if(!dragSrcId || dragSrcId === targetId) return;
+  document.querySelectorAll('.task-row').forEach(r=>r.classList.remove('drag-over','dragging'));
   const tasks = JSON.parse(JSON.stringify(STATE.tasks));
-  const idx = tasks.findIndex(t=>t.id===id);
-  if(idx===-1) return;
-  const newIdx = idx + dir;
-  if(newIdx < 0 || newIdx >= tasks.length) return;
-  // Swap
-  [tasks[idx], tasks[newIdx]] = [tasks[newIdx], tasks[idx]];
+  const srcIdx = tasks.findIndex(t=>t.id===dragSrcId);
+  const tgtIdx = tasks.findIndex(t=>t.id===targetId);
+  if(srcIdx===-1||tgtIdx===-1) return;
+  const [moved] = tasks.splice(srcIdx,1);
+  tasks.splice(tgtIdx,0,moved);
+  dragSrcId = null;
   await saveTasks(tasks);
 }
 
@@ -1735,12 +1783,95 @@ async function init() {
   if(sel) sel.value=rs;
 }
 
+// ── Level tracking: remember each kid's current level to detect level-up ──
+const _kidLevelCache = {}; // kidId -> levelMin
+
+function checkLevelUp(kidId, newPts) {
+  const newLevel = getEmoji(newPts);
+  const prev = _kidLevelCache[kidId];
+  _kidLevelCache[kidId] = newLevel.min;
+  // Only fire if prev was set (not first load) and level actually increased
+  if(prev !== undefined && newLevel.min > prev) {
+    triggerCelebration(newLevel);
+  }
+}
+
+function triggerCelebration(level) {
+  // Chime sound (Web Audio API — no external file needed)
+  try {
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.value = freq;
+      osc.type = 'sine';
+      const t = ctx.currentTime + i * 0.18;
+      gain.gain.setValueAtTime(0, t);
+      gain.gain.linearRampToValueAtTime(0.35, t + 0.05);
+      gain.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+      osc.start(t); osc.stop(t + 0.6);
+    });
+  } catch(e) {}
+
+  // Fireworks canvas
+  const canvas = document.getElementById('celebration-canvas');
+  canvas.style.display = 'block';
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  const ctx2 = canvas.getContext('2d');
+  const particles = [];
+  const colors = ['#FFD700','#FF6B9D','#1ABC9C','#9B59B6','#3498DB','#FF8C00','#fff'];
+  for(let b=0;b<8;b++){
+    const bx = Math.random()*canvas.width;
+    const by = Math.random()*canvas.height*0.6 + canvas.height*0.1;
+    for(let i=0;i<60;i++){
+      const angle = (Math.PI*2/60)*i + Math.random()*0.3;
+      const speed = 2+Math.random()*5;
+      particles.push({
+        x:bx, y:by,
+        vx:Math.cos(angle)*speed, vy:Math.sin(angle)*speed - 2,
+        color:colors[Math.floor(Math.random()*colors.length)],
+        alpha:1, size:3+Math.random()*3,
+        decay:0.013+Math.random()*0.012,
+        gravity:0.12
+      });
+    }
+  }
+  let frame = 0;
+  function draw() {
+    ctx2.clearRect(0,0,canvas.width,canvas.height);
+    particles.forEach(p=>{
+      p.x+=p.vx; p.y+=p.vy; p.vy+=p.gravity;
+      p.vx*=0.98; p.alpha-=p.decay;
+      ctx2.globalAlpha=Math.max(0,p.alpha);
+      ctx2.fillStyle=p.color;
+      ctx2.beginPath();
+      ctx2.arc(p.x,p.y,p.size,0,Math.PI*2);
+      ctx2.fill();
+    });
+    frame++;
+    if(frame<180 && particles.some(p=>p.alpha>0)) requestAnimationFrame(draw);
+    else { canvas.style.display='none'; ctx2.clearRect(0,0,canvas.width,canvas.height); }
+  }
+  requestAnimationFrame(draw);
+
+  // Banner
+  const banner = document.getElementById('levelup-banner');
+  document.getElementById('levelup-emoji').textContent = level.emoji;
+  document.getElementById('levelup-text').textContent = level.label;
+  document.getElementById('levelup-sub').textContent = level.min+' points reached! 🎉';
+  banner.classList.add('show');
+  setTimeout(()=>banner.classList.remove('show'), 3500);
+}
+
 init();
 
 // Make functions available globally (needed for onclick handlers in HTML)
 window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
-window.saveTaskEdit=saveTaskEdit; window.moveTask=moveTask; window.addKid=addKid; window.deleteKid=deleteKid;
+window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
 window.adjustTask=adjustTask; window.changePassword=changePassword; window.resetDay=resetDay;
 window.saveRefresh=saveRefresh; window.renderLevelsEditor=renderLevelsEditor;
 window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
@@ -1802,5 +1933,12 @@ window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendin
   </div>
 </div>
 
+<!-- Celebration canvas + banner -->
+<canvas id="celebration-canvas"></canvas>
+<div class="levelup-banner" id="levelup-banner">
+  <span class="levelup-emoji" id="levelup-emoji">🏆</span>
+  <div class="levelup-text" id="levelup-text">Level Up!</div>
+  <div class="levelup-sub" id="levelup-sub">You're on fire!</div>
+</div>
 </body>
 </html>
