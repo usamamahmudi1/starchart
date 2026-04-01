@@ -524,6 +524,17 @@
     font-family:'Fredoka One',cursive; font-size:1.1rem;
   }
   .task-edit-name, .task-edit-pts { padding:0.45rem 0.7rem; font-size:0.9rem; }
+  .reorder-btns { display:flex; flex-direction:column; gap:2px; flex-shrink:0; }
+  .reorder-btn {
+    width:26px; height:22px; border-radius:6px;
+    border:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.06);
+    color:rgba(255,255,255,0.6); font-size:0.75rem;
+    cursor:pointer; display:flex; align-items:center; justify-content:center;
+    transition:all 0.15s; line-height:1;
+  }
+  .reorder-btn:hover:not(:disabled) { background:rgba(255,255,255,0.18); color:white; }
+  .reorder-btn:disabled { opacity:0.2; cursor:default; }
   ::-webkit-scrollbar { width: 6px; }
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 3px; }
@@ -588,6 +599,24 @@
     border-radius:20px; padding:1.5rem; width:100%; max-width:380px;
     max-height:90vh; display:flex; flex-direction:column;
   }
+  .custom-deed-box {
+    border-top:1px solid rgba(255,255,255,0.1);
+    margin-top:0.75rem; padding-top:0.75rem; flex-shrink:0;
+  }
+  .custom-deed-label {
+    font-size:0.8rem; font-weight:700; opacity:0.6;
+    text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.5rem;
+  }
+  .custom-deed-input {
+    width:100%; padding:0.65rem 0.85rem;
+    background:rgba(255,255,255,0.08);
+    border:1px dashed rgba(255,215,0,0.4);
+    border-radius:10px; color:white;
+    font-family:'Nunito',sans-serif; font-size:0.9rem;
+    outline:none; transition:border-color 0.2s;
+  }
+  .custom-deed-input:focus { border-color:rgba(255,215,0,0.8); }
+  .custom-deed-input::placeholder { opacity:0.4; }
   .suggest-task-scroll {
     overflow-y:auto; max-height:50vh; padding-right:4px; margin-bottom:0;
   }
@@ -987,6 +1016,22 @@ function renderApprovalsTab() {
     if(!kid) return '';
     const col = COLORS[kid.color]||COLORS.pink;
     const taskRows = Object.entries(taskIds).filter(([,c])=>c>0).map(([taskId, count]) => {
+      // Custom deed: key starts with 'deed:'
+      if(taskId.startsWith('deed:')) {
+        const parts = taskId.split(':');
+        const deedDesc = parts.slice(2).join(':');
+        const safeKey = encodeURIComponent(taskId);
+        return `<div class="approval-task-row" style="border:1px dashed rgba(255,215,0,0.3);background:rgba(255,215,0,0.05)">
+          <div style="flex:1">
+            <div class="approval-task-name">✨ ${escHtml(deedDesc)}</div>
+            <div style="font-size:0.75rem;opacity:0.5;margin-top:2px">New good deed — set points to approve</div>
+          </div>
+          <input class="form-input" id="deed-pts-${safeKey}" type="number" min="1" placeholder="pts"
+            style="width:60px;text-align:center;padding:0.3rem 0.4rem;font-size:0.85rem">
+          <button class="btn btn-approve btn-sm" onclick="approveDeed('${kid.id}','${encodeURIComponent(taskId)}')">✓ Approve</button>
+          <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${encodeURIComponent(taskId)}')">✗ Reject</button>
+        </div>`;
+      }
       const task = tasks.find(t=>t.id===taskId);
       if(!task) return '';
       return `<div class="approval-task-row">
@@ -996,7 +1041,7 @@ function renderApprovalsTab() {
         <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
       </div>`;
     }).join('');
-    if(!taskRows.replace(/<div[^>]*><\/div>/g,'').trim()) return '';
+    if(!taskRows.trim()) return '';
     return `<div class="approval-card">
       <div class="approval-card-header">
         <div class="approval-kid-avatar" style="background:linear-gradient(135deg,${col.grad})">${kid.emoji||'⭐'}</div>
@@ -1133,6 +1178,8 @@ function renderKidsView() {
   grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
     const stars  = starsForPoints(pts);
@@ -1166,8 +1213,8 @@ function renderKidsView() {
       <div class="kid-points-display">${pts}</div>
       <div class="kid-points-label">points today</div>
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
-      ${tasks.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
-      ${tasks.length?`<button class="suggest-btn" onclick="openSuggestModal('${kid.id}')">✋ I did something!</button>`:''}
+      ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
+      <button class="suggest-btn" onclick="openSuggestModal('${kid.id}')">✋ I did something!</button>
     </div>`;
   }).join('');
 }
@@ -1209,6 +1256,8 @@ function renderMarkTab() {
   grid.innerHTML = approvalHtml + kids.map(kid => {
     const kidDone = todayDone[kid.id]||{};
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const col   = COLORS[kid.color]||COLORS.pink;
     const level = getEmoji(pts);
     const counters = tasks.map(t => {
@@ -1262,15 +1311,30 @@ function renderTasksTab() {
   const { tasks } = getData();
   const list = document.getElementById('tasks-list-parent');
   if(!tasks.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No tasks yet. Add one above!</div>'; return; }
-  list.innerHTML = tasks.map(t=>`
+  list.innerHTML = tasks.map((t,i)=>`
     <div class="task-row" id="trow-${t.id}">
-      <input class="form-input task-edit-name" value="${escHtml(t.name)}" style="flex:1;min-width:100px" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
+      <div class="reorder-btns">
+        <button class="reorder-btn" onclick="moveTask('${t.id}',-1)" ${i===0?'disabled':''} title="Move up">▲</button>
+        <button class="reorder-btn" onclick="moveTask('${t.id}',1)" ${i===tasks.length-1?'disabled':''} title="Move down">▼</button>
+      </div>
+      <input class="form-input task-edit-name" value="${escHtml(t.name)}" style="flex:1;min-width:80px" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
       <div style="display:flex;align-items:center;gap:4px">
-        <input class="form-input task-edit-pts" type="number" min="1" value="${t.points}" style="width:70px;text-align:center" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
+        <input class="form-input task-edit-pts" type="number" min="1" value="${t.points}" style="width:65px;text-align:center" onblur="saveTaskEdit('${t.id}')" onkeydown="if(event.key==='Enter')this.blur()">
         <span style="font-size:0.8rem;opacity:0.5">pts</span>
       </div>
-      <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">Delete</button>
+      <button class="btn btn-danger btn-sm" onclick="deleteTask('${t.id}')">✕</button>
     </div>`).join('');
+}
+
+async function moveTask(id, dir) {
+  const tasks = JSON.parse(JSON.stringify(STATE.tasks));
+  const idx = tasks.findIndex(t=>t.id===id);
+  if(idx===-1) return;
+  const newIdx = idx + dir;
+  if(newIdx < 0 || newIdx >= tasks.length) return;
+  // Swap
+  [tasks[idx], tasks[newIdx]] = [tasks[newIdx], tasks[idx]];
+  await saveTasks(tasks);
 }
 
 async function saveTaskEdit(id) {
@@ -1488,6 +1552,7 @@ function openSuggestModal(kidId) {
       ${badge}
     </div>`;
   }).join('') || '<div style="opacity:0.5;font-size:0.85rem">No tasks set up yet!</div>';
+  document.getElementById('custom-deed-input').value='';
   document.getElementById('suggest-overlay').style.display='flex';
 }
 
@@ -1500,16 +1565,23 @@ function toggleSuggest(taskId) {
 function closeSuggestModal() { document.getElementById('suggest-overlay').style.display='none'; }
 
 async function submitSuggestions() {
-  if(!suggestSelected.size){ toast('Tap at least one task!'); return; }
+  const customDeed = document.getElementById('custom-deed-input').value.trim();
+  if(!suggestSelected.size && !customDeed){ toast('Tap a task or describe what you did!'); return; }
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(!pending[suggestKidId]) pending[suggestKidId]={};
+  // Add selected existing tasks
   suggestSelected.forEach(taskId=>{
     pending[suggestKidId][taskId] = (pending[suggestKidId][taskId]||0)+1;
   });
+  // Add custom deed as a special entry with key 'deed:timestamp:description'
+  if(customDeed) {
+    const deedKey = 'deed:'+Date.now()+':'+customDeed.slice(0,80);
+    pending[suggestKidId][deedKey] = 1;
+  }
   await savePending(pending);
   closeSuggestModal();
   const kid = STATE.kids.find(k=>k.id===suggestKidId);
-  toast((kid?kid.emoji+' ':'')+'Request sent to parent! ⏳');
+  toast((kid?kid.emoji+' ':'')+'Sent to parent! ⏳');
 }
 
 async function approveTask(kidId, taskId, count) {
@@ -1529,10 +1601,37 @@ async function approveTask(kidId, taskId, count) {
 }
 
 async function rejectTask(kidId, taskId) {
+  const realKey = decodeURIComponent(taskId);
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
-  if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
+  if(pending[kidId]) { delete pending[kidId][realKey]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
   await savePending(pending);
   toast('Request rejected.');
+}
+
+async function approveDeed(kidId, encodedKey) {
+  const taskId = decodeURIComponent(encodedKey);
+  const safeKey = encodedKey;
+  const ptsInput = document.getElementById('deed-pts-'+safeKey);
+  const pts = parseInt(ptsInput ? ptsInput.value : 0);
+  if(!pts || pts < 1) { toast('Set the points first!'); if(ptsInput) ptsInput.focus(); return; }
+  // Create a one-off task entry in done using a synthetic task ID
+  const deedParts = taskId.split(':');
+  const deedDesc = deedParts.slice(2).join(':');
+  // Add a temporary task to STATE (not saved to tasks list) — store in done as a free-form deed
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk][kidId]) done[tk][kidId]={};
+  // Use the deed key itself as the task id in done, store points in a deeds map
+  if(!done[tk].__deeds__) done[tk].__deeds__ = {};
+  if(!done[tk].__deeds__[kidId]) done[tk].__deeds__[kidId] = [];
+  done[tk].__deeds__[kidId].push({ desc: deedDesc, pts });
+  // Remove from pending
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
+  await Promise.all([saveDone(done), savePending(pending)]);
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  toast('✓ '+(kid?kid.emoji+' ':'')+deedDesc.slice(0,20)+' approved! +'+pts+'pts');
 }
 
 // ============ KID EDIT MODAL ============
@@ -1570,6 +1669,8 @@ function renderHistoryTab() {
     const rows = kids.map(kid=>{
       const kidDone = dayDone[kid.id]||{};
       let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    const kidDeeds = ((todayDone.__deeds__||{})[kid.id]||[]);
+    kidDeeds.forEach(d=>{ pts+=d.pts||0; });
       const col=COLORS[kid.color]||COLORS.pink;
       const lv=getEmoji(pts);
       return `<div class="history-kid-row">
@@ -1639,7 +1740,7 @@ init();
 // Make functions available globally (needed for onclick handlers in HTML)
 window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
-window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.deleteKid=deleteKid;
+window.saveTaskEdit=saveTaskEdit; window.moveTask=moveTask; window.addKid=addKid; window.deleteKid=deleteKid;
 window.adjustTask=adjustTask; window.changePassword=changePassword; window.resetDay=resetDay;
 window.saveRefresh=saveRefresh; window.renderLevelsEditor=renderLevelsEditor;
 window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
@@ -1648,7 +1749,7 @@ window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor
 window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.toggleSuggest=toggleSuggest;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
-window.approveTask=approveTask; window.rejectTask=rejectTask;
+window.approveTask=approveTask; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
@@ -1659,6 +1760,10 @@ window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendin
     <div class="suggest-modal-title" id="suggest-modal-kid-name">I did something! 🙋</div>
     <div class="suggest-modal-sub">Tap the tasks you completed — your parent will approve them!</div>
     <div class="suggest-task-scroll" id="suggest-task-list"></div>
+    <div class="custom-deed-box">
+      <div class="custom-deed-label">✨ Or suggest something new</div>
+      <input class="custom-deed-input" id="custom-deed-input" placeholder="e.g. I helped set the table...">
+    </div>
     <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-shrink:0">
       <button class="btn btn-gold" style="flex:1" onclick="submitSuggestions()">✋ Tell Parent!</button>
       <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeSuggestModal()">Cancel</button>
