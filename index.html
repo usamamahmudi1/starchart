@@ -1717,8 +1717,8 @@ function renderHistoryTab() {
     const rows = kids.map(kid=>{
       const kidDone = dayDone[kid.id]||{};
       let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
-    const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
-    kidDeeds.forEach(d=>{ pts+=d.pts||0; });
+      const kidDeeds = ((dayDone.xdeeds||{})[kid.id]||[]);
+      kidDeeds.forEach(d=>{ pts+=d.pts||0; });
       const col=COLORS[kid.color]||COLORS.pink;
       const lv=getEmoji(pts);
       return `<div class="history-kid-row">
@@ -1869,7 +1869,7 @@ function triggerCelebration(level) {
 init();
 
 // Make functions available globally (needed for onclick handlers in HTML)
-window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
+window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
 window.adjustTask=adjustTask; window.changePassword=changePassword; window.resetDay=resetDay;
