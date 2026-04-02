@@ -665,17 +665,73 @@
   }
   .kid-edit-emoji { font-size:1.6rem; background:none; border:none; cursor:pointer; padding:0; }
   /* ── History tab ── */
-  .history-day { margin-bottom:1.25rem; }
-  .history-day-title {
-    font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.08em;
-    opacity:0.5; margin-bottom:0.5rem;
-  }
-  .history-kid-row {
+  .history-day { margin-bottom:0.5rem; }
+  .history-day-header {
     display:flex; align-items:center; gap:0.75rem;
-    padding:0.5rem 0.75rem; border-radius:10px;
-    background:rgba(255,255,255,0.04); margin-bottom:0.35rem;
+    cursor:pointer; padding:0.75rem 1rem;
+    background:rgba(255,255,255,0.05); border-radius:12px;
+    border:1px solid rgba(255,255,255,0.08);
+    transition:background 0.15s; user-select:none;
   }
-  .history-pts { font-family:'Fredoka One',cursive; color:var(--gold); font-size:1.1rem; margin-left:auto; }
+  .history-day-header:hover { background:rgba(255,255,255,0.09); }
+  .history-day-title {
+    font-size:0.9rem; font-weight:700; flex:1;
+  }
+  .history-day-chevron { font-size:0.8rem; opacity:0.5; transition:transform 0.2s; }
+  .history-day-chevron.open { transform:rotate(90deg); }
+  .history-day-summary { display:flex; gap:0.5rem; flex-wrap:wrap; }
+  .history-kid-pill {
+    font-size:0.75rem; font-weight:700;
+    background:rgba(255,255,255,0.08); border-radius:999px;
+    padding:2px 8px;
+  }
+  .history-day-detail {
+    display:none; padding:0.75rem 0.25rem 0.25rem;
+  }
+  .history-day-detail.open { display:block; }
+  .history-kid-section {
+    background:rgba(255,255,255,0.04); border-radius:10px;
+    margin-bottom:0.5rem; overflow:hidden;
+  }
+  .history-kid-header {
+    display:flex; align-items:center; gap:0.6rem;
+    padding:0.6rem 0.85rem;
+    background:rgba(255,255,255,0.04);
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .history-kid-name { font-weight:700; flex:1; }
+  .history-pts { font-family:'Fredoka One',cursive; color:var(--gold); font-size:1.05rem; }
+  .history-task-row {
+    display:flex; align-items:center; gap:0.6rem;
+    padding:0.45rem 0.85rem;
+    border-bottom:1px solid rgba(255,255,255,0.04);
+    font-size:0.88rem;
+  }
+  .history-task-row:last-child { border-bottom:none; }
+  .history-task-name { flex:1; opacity:0.85; }
+  .history-task-count-wrap { display:flex; align-items:center; gap:4px; }
+  .history-count-btn {
+    width:22px; height:22px; border-radius:6px;
+    border:1px solid rgba(255,255,255,0.15);
+    background:rgba(255,255,255,0.06); color:white;
+    font-size:0.85rem; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition:background 0.15s;
+  }
+  .history-count-btn:hover { background:rgba(255,255,255,0.18); }
+  .history-count-btn:disabled { opacity:0.2; cursor:default; }
+  .history-count-val {
+    min-width:20px; text-align:center;
+    font-family:'Fredoka One',cursive; font-size:0.95rem; color:var(--gold);
+  }
+  .history-task-pts { font-size:0.78rem; opacity:0.5; min-width:50px; text-align:right; }
+  .history-deed-row {
+    display:flex; align-items:center; gap:0.6rem;
+    padding:0.45rem 0.85rem; font-size:0.88rem;
+    border-bottom:1px solid rgba(255,255,255,0.04);
+    color:#FFD700;
+  }
+  .history-deed-row:last-child { border-bottom:none; }
 
   /* ── Level-up celebration ── */
   #celebration-canvas {
@@ -1710,27 +1766,133 @@ async function saveKidEdit() {
 function renderHistoryTab() {
   const { kids, tasks, done } = getData();
   const el = document.getElementById('history-content');
-  const days = Object.keys(done).sort().reverse().slice(0,30);
+  // Filter out non-date keys (like any meta keys)
+  const days = Object.keys(done).filter(k=>/^\d{4}-\d{2}-\d{2}$/.test(k)).sort().reverse().slice(0,60);
   if(!days.length){ el.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No history yet.</div>'; return; }
+
+  // Remember which days were open before re-render
+  const openDays = new Set(
+    [...document.querySelectorAll('.history-day-detail.open')]
+      .map(el=>el.dataset.day)
+  );
+
   el.innerHTML = days.map(day=>{
     const dayDone = done[day]||{};
-    const rows = kids.map(kid=>{
+    const label = day===todayKey()?'Today':new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const isOpen = openDays.has(day);
+
+    // Summary pills for header
+    const summaryPills = kids.map(kid=>{
+      const kidDone = dayDone[kid.id]||{};
+      let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+      ((dayDone.xdeeds||{})[kid.id]||[]).forEach(d=>{ pts+=d.pts||0; });
+      const col=COLORS[kid.color]||COLORS.pink;
+      return `<span class="history-kid-pill" style="color:${col.main}">${kid.emoji||'⭐'} ${pts}pts</span>`;
+    }).join('');
+
+    // Detail: one section per kid
+    const kidSections = kids.map(kid=>{
+      const col=COLORS[kid.color]||COLORS.pink;
       const kidDone = dayDone[kid.id]||{};
       let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
       const kidDeeds = ((dayDone.xdeeds||{})[kid.id]||[]);
       kidDeeds.forEach(d=>{ pts+=d.pts||0; });
-      const col=COLORS[kid.color]||COLORS.pink;
       const lv=getEmoji(pts);
-      return `<div class="history-kid-row">
-        <span style="font-size:1.3rem">${kid.emoji||'⭐'}</span>
-        <span style="color:${col.main};font-weight:700">${escHtml(kid.name)}</span>
-        <span style="opacity:0.5;font-size:0.8rem">${lv.emoji} ${lv.label}</span>
-        <span class="history-pts">${pts} pts</span>
+
+      // Task rows with editable counters
+      const taskRows = tasks.map(t=>{
+        const count = kidDone[t.id]||0;
+        if(count===0) return ''; // hide zero-count tasks to keep it clean
+        return `<div class="history-task-row">
+          <span class="history-task-name">${escHtml(t.name)}</span>
+          <div class="history-task-count-wrap">
+            <button class="history-count-btn" onclick="historyAdjust('${day}','${kid.id}','${t.id}',-1)" ${count<=0?'disabled':''}>−</button>
+            <span class="history-count-val" id="hcnt-${day}-${kid.id}-${t.id}">${count}</span>
+            <button class="history-count-btn" onclick="historyAdjust('${day}','${kid.id}','${t.id}',1)">+</button>
+          </div>
+          <span class="history-task-pts" id="hpts-${day}-${kid.id}-${t.id}">+${count*t.points}pts</span>
+        </div>`;
+      }).filter(Boolean).join('');
+
+      // Zero tasks (show add row)
+      const zeroTasks = tasks.filter(t=>!(kidDone[t.id]||0));
+      const addRows = zeroTasks.map(t=>`
+        <div class="history-task-row" style="opacity:0.4">
+          <span class="history-task-name">${escHtml(t.name)}</span>
+          <div class="history-task-count-wrap">
+            <button class="history-count-btn" style="opacity:0.5" disabled>−</button>
+            <span class="history-count-val">0</span>
+            <button class="history-count-btn" style="color:#2ecc71;border-color:rgba(46,204,113,0.4)" onclick="historyAdjust('${day}','${kid.id}','${t.id}',1)">+</button>
+          </div>
+          <span class="history-task-pts">+0pts</span>
+        </div>`).join('');
+
+      // Deed rows
+      const deedRows = kidDeeds.map((d,di)=>`
+        <div class="history-deed-row">
+          <span style="flex:1">✨ ${escHtml(d.desc)}</span>
+          <span style="font-size:0.8rem;opacity:0.7">+${d.pts}pts</span>
+        </div>`).join('');
+
+      return `<div class="history-kid-section">
+        <div class="history-kid-header">
+          <span style="font-size:1.2rem">${kid.emoji||'⭐'}</span>
+          <span class="history-kid-name" style="color:${col.main}">${escHtml(kid.name)}</span>
+          <span style="opacity:0.5;font-size:0.8rem">${lv.emoji} ${lv.label}</span>
+          <span class="history-pts" id="htotal-${day}-${kid.id}">${pts} pts</span>
+        </div>
+        ${taskRows}${addRows}${deedRows}
+        ${!taskRows&&!deedRows?'<div style="padding:0.5rem 0.85rem;opacity:0.4;font-size:0.85rem">Nothing recorded</div>':''}
       </div>`;
     }).join('');
-    const label = day===todayKey()?'Today':new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
-    return `<div class="history-day"><div class="history-day-title">${label}</div>${rows}</div>`;
+
+    return `<div class="history-day">
+      <div class="history-day-header" onclick="toggleHistoryDay('${day}')">
+        <span class="history-day-chevron ${isOpen?'open':''}" id="hchev-${day}">▶</span>
+        <span class="history-day-title">${label}</span>
+        <div class="history-day-summary">${summaryPills}</div>
+      </div>
+      <div class="history-day-detail ${isOpen?'open':''}" data-day="${day}">
+        ${kidSections}
+      </div>
+    </div>`;
   }).join('');
+}
+
+function toggleHistoryDay(day) {
+  const detail = document.querySelector(`.history-day-detail[data-day="${day}"]`);
+  const chev   = document.getElementById('hchev-'+day);
+  if(!detail) return;
+  const opening = !detail.classList.contains('open');
+  detail.classList.toggle('open', opening);
+  chev.classList.toggle('open', opening);
+}
+
+async function historyAdjust(day, kidId, taskId, delta) {
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[day]) done[day]={};
+  if(!done[day][kidId]) done[day][kidId]={};
+  const cur  = done[day][kidId][taskId]||0;
+  const next = Math.max(0, cur+delta);
+  done[day][kidId][taskId] = next;
+
+  // Optimistic UI — update count + pts + total
+  const cntEl = document.getElementById(`hcnt-${day}-${kidId}-${taskId}`);
+  const ptsEl = document.getElementById(`hpts-${day}-${kidId}-${taskId}`);
+  const task  = STATE.tasks.find(t=>t.id===taskId);
+  if(cntEl) cntEl.textContent = next;
+  if(ptsEl && task) ptsEl.textContent = '+'+next*task.points+'pts';
+
+  // Recalc kid total for that day
+  const { tasks } = getData();
+  const kidDone = done[day][kidId]||{};
+  let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+  ((done[day].xdeeds||{})[kidId]||[]).forEach(d=>{ pts+=d.pts||0; });
+  const totalEl = document.getElementById(`htotal-${day}-${kidId}`);
+  if(totalEl) totalEl.textContent = pts+' pts';
+
+  await saveDone(done);
+  toast('History updated ✓');
 }
 
 function switchTab(name, btn) {
@@ -1882,7 +2044,7 @@ window.openSuggestModal=openSuggestModal; window.toggleSuggest=toggleSuggest;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
-window.renderHistoryTab=renderHistoryTab; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
+window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryDay; window.historyAdjust=historyAdjust; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
 
 <!-- Suggestion Modal (kids side) -->
