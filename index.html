@@ -165,6 +165,33 @@
   .kid-task-check.done { background: var(--green); }
   .kid-task-check.pending { background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); }
   .kid-task-check.waiting { background: rgba(255,165,0,0.25); border: 1px solid rgba(255,165,0,0.6); font-size:0.75rem; }
+  /* Tappable task rows on kids view */
+  .kid-task-item.tappable {
+    cursor: pointer;
+    border-radius: 10px;
+    padding-left: 0.4rem; padding-right: 0.4rem;
+    margin: 0 -0.4rem;
+    transition: background 0.15s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .kid-task-item.tappable:hover { background: rgba(255,255,255,0.07); }
+  .kid-task-item.tappable:active { background: rgba(255,215,0,0.12); transform: scale(0.98); }
+  .kid-task-item.tappable.pending-suggest { background: rgba(255,165,0,0.08); }
+  .tap-hint {
+    font-size: 0.68rem; opacity: 0.4; margin-left: auto;
+    white-space: nowrap; flex-shrink: 0; padding-left: 0.3rem;
+  }
+  /* Suggest button renamed */
+  .suggest-btn-deed {
+    margin-top: 0.5rem; width: 100%;
+    padding: 0.45rem 0;
+    background: rgba(255,255,255,0.05);
+    border: 1px dashed rgba(255,255,255,0.2);
+    border-radius: 10px; color: rgba(255,255,255,0.5);
+    font-family: 'Nunito', sans-serif; font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .suggest-btn-deed:hover { background: rgba(255,255,255,0.1); color: white; border-color: rgba(255,255,255,0.35); }
   .kid-task-name { flex: 1; }
   .kid-task-name.done { opacity: 0.5; text-decoration: line-through; }
   .kid-task-pts {
@@ -1339,18 +1366,28 @@ function renderKidsView() {
       const count = kidDone[t.id]||0;
       const pendCount = kidPending[t.id]||0;
       let checkClass = 'pending', checkContent = '', nameStyle = '', ptsText = '+'+t.points+'pts';
+      let tappable = '', hint = '', tapHandler = '';
       if(count > 0) {
         checkClass='done'; checkContent=count;
         ptsText = `×${count} = +${count*t.points}pts`;
+        // Already done — tapping adds another suggestion
+        tappable = 'tappable'; hint = '<span class="tap-hint">tap again</span>';
+        tapHandler = `onclick="suggestTask('${kid.id}','${t.id}',this)"`;
       } else if(pendCount > 0) {
         checkClass='waiting'; checkContent='⏳';
         nameStyle='style="color:#FFA500"';
         ptsText = `⏳ waiting`;
+        // Already pending — don't allow another tap
+      } else {
+        // Not done, not pending — main tap action
+        tappable = 'tappable'; hint = '<span class="tap-hint">tap to mark</span>';
+        tapHandler = `onclick="suggestTask('${kid.id}','${t.id}',this)"`;
       }
-      return `<li class="kid-task-item">
+      return `<li class="kid-task-item ${tappable} ${pendCount>0&&!count?'pending-suggest':''}" ${tapHandler}>
         <div class="kid-task-check ${checkClass}">${checkContent}</div>
         <span class="kid-task-name" ${nameStyle}>${escHtml(t.name)}</span>
         <span class="kid-task-pts" style="${pendCount>0&&!count?'color:#FFA500':''}">${ptsText}</span>
+        ${hint}
       </li>`;
     }).join('');
     return `<div class="kid-card">
@@ -1373,7 +1410,7 @@ function renderKidsView() {
           <div class="wallet-streak">${pts===0?'Start earning!':pts+' points earned today'}</div>
         </div>
       </div>
-      <button class="suggest-btn" onclick="openSuggestModal('${kid.id}')">✋ I did something!</button>
+      <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
     </div>`;
   }).join('');
 }
@@ -1713,56 +1750,45 @@ async function resetLevels() {
 
 // ============ SUGGESTION FLOW ============
 let suggestKidId = null;
-let suggestSelected = new Set();
 
-function openSuggestModal(kidId) {
+// ── Single-tap on a task row: immediately suggest it ──
+async function suggestTask(kidId, taskId, el) {
+  // Visual feedback — briefly highlight the row
+  el.style.background = 'rgba(255,215,0,0.2)';
+  setTimeout(()=>{ el.style.background=''; }, 600);
+
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(!pending[kidId]) pending[kidId]={};
+  pending[kidId][taskId] = (pending[kidId][taskId]||0)+1;
+  await savePending(pending);
+
+  const kid  = STATE.kids.find(k=>k.id===kidId);
+  const task = STATE.tasks.find(t=>t.id===taskId);
+  toast((kid?kid.emoji+' ':'')+(task?task.name+' ':'')+'sent! ⏳ Parent will approve');
+}
+
+// ── "Something not on the list?" modal — custom deed only ──
+function openDeedModal(kidId) {
   suggestKidId = kidId;
-  suggestSelected = new Set();
   const kid = STATE.kids.find(k=>k.id===kidId);
-  const tk = todayKey();
-  const done = (STATE.done[tk]||{})[kidId]||{};
-  const pending = (STATE.pending||{})[kidId]||{};
-  document.getElementById('suggest-modal-kid-name').textContent = (kid?kid.emoji+' '+kid.name:'') + ' — I did something! 🙋';
-  const list = document.getElementById('suggest-task-list');
-  list.innerHTML = STATE.tasks.map(t => {
-    const doneCount = done[t.id]||0;
-    const pendCount = pending[t.id]||0;
-    const badge = pendCount ? `<span class="pending-badge">⏳ ${pendCount} waiting</span>` : '';
-    return `<div class="suggest-task-item" id="sug-${t.id}" onclick="toggleSuggest('${t.id}')">
-      <div class="suggest-task-check"></div>
-      <div style="flex:1">
-        <div style="font-size:0.9rem;font-weight:700">${escHtml(t.name)}</div>
-        <div style="font-size:0.75rem;opacity:0.5">+${t.points}pts${doneCount?' · done '+doneCount+'×':''}</div>
-      </div>
-      ${badge}
-    </div>`;
-  }).join('') || '<div style="opacity:0.5;font-size:0.85rem">No tasks set up yet!</div>';
+  document.getElementById('suggest-modal-kid-name').textContent = (kid?kid.emoji+' '+kid.name+' — ':'')+'Something new! ✨';
   document.getElementById('custom-deed-input').value='';
   document.getElementById('suggest-overlay').style.display='flex';
+  setTimeout(()=>document.getElementById('custom-deed-input').focus(), 100);
 }
 
-function toggleSuggest(taskId) {
-  const el = document.getElementById('sug-'+taskId);
-  if(suggestSelected.has(taskId)){ suggestSelected.delete(taskId); el.classList.remove('selected'); }
-  else { suggestSelected.add(taskId); el.classList.add('selected'); }
-}
+// Keep openSuggestModal as alias so nothing breaks
+function openSuggestModal(kidId) { openDeedModal(kidId); }
 
 function closeSuggestModal() { document.getElementById('suggest-overlay').style.display='none'; }
 
 async function submitSuggestions() {
   const customDeed = document.getElementById('custom-deed-input').value.trim();
-  if(!suggestSelected.size && !customDeed){ toast('Tap a task or describe what you did!'); return; }
+  if(!customDeed){ toast('Describe what you did!'); return; }
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(!pending[suggestKidId]) pending[suggestKidId]={};
-  // Add selected existing tasks
-  suggestSelected.forEach(taskId=>{
-    pending[suggestKidId][taskId] = (pending[suggestKidId][taskId]||0)+1;
-  });
-  // Add custom deed as a special entry with key 'deed:timestamp:description'
-  if(customDeed) {
-    const deedKey = 'deed:'+Date.now()+':'+customDeed.slice(0,80);
-    pending[suggestKidId][deedKey] = 1;
-  }
+  const deedKey = 'deed:'+Date.now()+':'+customDeed.slice(0,80);
+  pending[suggestKidId][deedKey] = 1;
   await savePending(pending);
   closeSuggestModal();
   const kid = STATE.kids.find(k=>k.id===suggestKidId);
@@ -2262,7 +2288,7 @@ window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
 window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
 window.resetLevels=resetLevels;
-window.openSuggestModal=openSuggestModal; window.toggleSuggest=toggleSuggest;
+window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
@@ -2271,14 +2297,10 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
 
 <!-- Suggestion Modal (kids side) -->
 <div class="suggest-modal-overlay" id="suggest-overlay" style="display:none" onclick="if(event.target===this)closeSuggestModal()">
-  <div class="suggest-modal">
-    <div class="suggest-modal-title" id="suggest-modal-kid-name">I did something! 🙋</div>
-    <div class="suggest-modal-sub">Tap the tasks you completed — your parent will approve them!</div>
-    <div class="suggest-task-scroll" id="suggest-task-list"></div>
-    <div class="custom-deed-box">
-      <div class="custom-deed-label">✨ Or suggest something new</div>
-      <input class="custom-deed-input" id="custom-deed-input" placeholder="e.g. I helped set the table...">
-    </div>
+  <div class="suggest-modal" style="max-height:unset">
+    <div class="suggest-modal-title" id="suggest-modal-kid-name">Something new! ✨</div>
+    <div class="suggest-modal-sub">Tell your parent about something great you did that's not on the task list!</div>
+    <input class="custom-deed-input" id="custom-deed-input" placeholder="e.g. I helped set the table..." style="margin-top:0.5rem">
     <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-shrink:0">
       <button class="btn btn-gold" style="flex:1" onclick="submitSuggestions()">✋ Tell Parent!</button>
       <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeSuggestModal()">Cancel</button>
