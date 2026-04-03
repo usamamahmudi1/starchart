@@ -207,6 +207,50 @@
   }
   .star-icon { font-size: 1.2rem; }
 
+  /* ── Compact kid card top row ── */
+  .kid-top-row {
+    display: flex; align-items: center; gap: 0.85rem; margin-bottom: 0.75rem;
+  }
+  .kid-avatar-sm {
+    width: 62px; height: 62px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    position: relative; overflow: visible;
+  }
+  .kid-avatar-sm img {
+    width: 100%; height: 100%; object-fit: cover; border-radius: 50%;
+    position: relative; z-index: 1;
+  }
+  .kid-avatar-sm > span { position: relative; z-index: 1; font-size: 1.9rem; }
+  .kid-photo-btn {
+    position: absolute; bottom: 0; right: -2px;
+    width: 22px; height: 22px; border-radius: 50%;
+    background: rgba(0,0,0,0.65); border: 1.5px solid rgba(255,255,255,0.35);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.65rem; cursor: pointer; z-index: 4;
+    transition: background 0.15s;
+  }
+  .kid-photo-btn:hover { background: rgba(0,0,0,0.9); }
+  .kid-top-info { flex: 1; min-width: 0; }
+  .kid-level-inline {
+    display: flex; align-items: center; gap: 0.3rem; margin: 1px 0 2px;
+  }
+  .kid-level-label-sm { font-size: 0.72rem; opacity: 0.65; }
+  .kid-pts-inline { display: flex; align-items: baseline; gap: 0.3rem; flex-wrap: wrap; }
+  .kid-pts-num {
+    font-family: 'Fredoka One', cursive; font-size: 2rem; line-height: 1;
+    background: linear-gradient(90deg, #FFD700, #FFA500);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .kid-pts-unit { font-size: 0.65rem; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.05em; }
+  /* Scrollable task area */
+  .kid-tasks-scroll {
+    max-height: 185px; overflow-y: auto;
+    margin: 0.75rem 0 0; padding-right: 2px;
+  }
+  .kid-tasks-scroll::-webkit-scrollbar { width: 3px; }
+  .kid-tasks-scroll::-webkit-scrollbar-track { background: transparent; }
+  .kid-tasks-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 2px; }
+
   /* Parent nav button */
   .parent-nav-btn {
     position: fixed; bottom: 1.5rem; right: 1.5rem;
@@ -1252,13 +1296,13 @@ const db  = getFirestore(app);
 // ============ CONSTANTS ============
 const DEFAULT_PW = 'star1234';
 const DEFAULT_EMOJI_LEVELS = [
-  { min: 0,   emoji: '😴', label: 'Just warming up...' },
-  { min: 5,   emoji: '🌱', label: 'Getting started!' },
-  { min: 15,  emoji: '⭐', label: 'Star in the making!' },
-  { min: 30,  emoji: '🌟', label: 'Shining bright!' },
-  { min: 50,  emoji: '🏆', label: 'Champion!' },
-  { min: 75,  emoji: '🚀', label: 'To the moon!' },
-  { min: 100, emoji: '👑', label: 'The Ultimate Star!' },
+  { min: 0,   emoji: '🌙', label: 'Dreamer' },
+  { min: 5,   emoji: '🌱', label: 'Little Sprout' },
+  { min: 15,  emoji: '⚡', label: 'Energy Spark' },
+  { min: 30,  emoji: '🔥', label: 'On Fire!' },
+  { min: 50,  emoji: '💎', label: 'Diamond Mind' },
+  { min: 75,  emoji: '🚀', label: 'Sky Rocket' },
+  { min: 100, emoji: '👑', label: 'Legendary Star' },
 ];
 const PRESET_EMOJIS = ['😴','🌱','😊','🌟','⭐','🎯','💪','🔥','🏅','🥇','🏆','🎖️','🚀','💎','👑'];
 const COLORS = {
@@ -1572,17 +1616,25 @@ function renderKidsView() {
       </li>`;
     }).join('');
     return `<div class="kid-card">
-      <div class="kid-avatar" style="background:linear-gradient(135deg,${col.grad});box-shadow:0 0 30px ${col.main}44">
-        <span style="position:relative;z-index:1">${kid.emoji||'⭐'}</span>
-        <div class="pulse-ring" style="border-color:${col.main};animation-delay:${Math.random()}s"></div>
+      <div class="kid-top-row">
+        <div class="kid-avatar-sm" style="background:linear-gradient(135deg,${col.grad});box-shadow:0 0 20px ${col.main}55">
+          ${kid.photo?`<img src="${kid.photo}" alt="">`:`<span>${kid.emoji||'⭐'}</span>`}
+          <div class="kid-photo-btn" onclick="triggerPhotoUpload('${kid.id}')">📷</div>
+          <div class="pulse-ring" style="border-color:${col.main};animation-delay:${Math.random()}s"></div>
+        </div>
+        <div class="kid-top-info">
+          <div class="kid-name" style="color:${col.main};text-align:left;margin-bottom:0">${escHtml(kid.name)}</div>
+          <div class="kid-level-inline">
+            <span>${level.emoji}</span><span class="kid-level-label-sm">${level.label}</span>
+          </div>
+          <div class="kid-pts-inline">
+            <span class="kid-pts-num">${pts}</span>
+            <span class="kid-pts-unit">pts today</span>
+            ${stars?`<span style="font-size:0.8rem;margin-left:2px">${stars}</span>`:''}
+          </div>
+        </div>
       </div>
-      <div class="kid-name" style="color:${col.main}">${escHtml(kid.name)}</div>
-      <div class="kid-emoji-badge">${level.emoji}</div>
-      <div class="kid-emoji-label">${level.label}</div>
-      <div class="kid-points-display">${pts}</div>
-      <div class="kid-points-label">points today</div>
-      ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
-      ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
+      ${tasks.length||kidDeeds.length?`<div class="kid-tasks-scroll"><ul class="kid-tasks-list">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul></div>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       ${(()=>{
         const _wp  = getAllTimePtsForKid(kid.id, tasks);
         const _tp  = getTodayPtsForKid(kid.id, tasks);
@@ -1626,6 +1678,7 @@ function renderKidsView() {
         </div>`;
       })()}
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
+      <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
   }).join('');
 }
@@ -1974,10 +2027,18 @@ document.addEventListener('click', e=>{
   }
 });
 
+const LEVEL_NAME_POOL = [
+  'Dreamer','Little Sprout','Energy Spark','Rising Star','On Fire!',
+  'Super Achiever','Diamond Mind','Sky Rocket','Unstoppable','Legendary Star',
+  'Shooting Star','Cosmic Hero','Galaxy Master','World Beater','Ultimate Legend',
+];
+
 async function addLevel() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
   const maxMin = levels.reduce((m,l)=>Math.max(m,l.min),0);
-  levels.push({ min:maxMin+10, emoji:'🌟', label:'New level!' });
+  const usedLabels = new Set(levels.map(l=>l.label));
+  const nextName = LEVEL_NAME_POOL.find(n=>!usedLabels.has(n)) || `Level ${levels.length+1}`;
+  levels.push({ min:maxMin+10, emoji:'🌟', label:nextName });
   await saveLevels(levels);
   renderLevelsEditor();
   toast('Level added!');
@@ -2759,6 +2820,35 @@ function closeCardDetail() {
   document.getElementById('card-detail-overlay').style.display = 'none';
 }
 
+function triggerPhotoUpload(kidId) {
+  const inp = document.getElementById('photo-input-' + kidId);
+  if(inp) inp.click();
+}
+
+async function handlePhotoUpload(kidId, input) {
+  const file = input.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const img = new Image();
+    img.onload = async () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = 120; canvas.height = 120;
+      const ctx = canvas.getContext('2d');
+      const size = Math.min(img.width, img.height);
+      const sx = (img.width - size) / 2;
+      const sy = (img.height - size) / 2;
+      ctx.drawImage(img, sx, sy, size, size, 0, 0, 120, 120);
+      const dataURL = canvas.toDataURL('image/jpeg', 0.72);
+      const kids = STATE.kids.map(k => k.id === kidId ? {...k, photo: dataURL} : k);
+      await saveKids(kids);
+      toast('Photo updated! 📷');
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
@@ -2770,6 +2860,7 @@ window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor
 window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
 window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
+window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePhotoUpload;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
