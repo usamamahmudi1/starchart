@@ -1584,11 +1584,11 @@ function renderKidsView() {
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
       ${(()=>{
-        const _wp  = getWeekPtsForKid(kid.id, tasks);
+        const _wp  = getAllTimePtsForKid(kid.id, tasks);
         const _tp  = getTodayPtsForKid(kid.id, tasks);
         const _sp  = totalSpentKid(kid.id);
         const _wOre = (_wp * ORE_PER_PT).toFixed(1);
-        const _wKr  = (_wp * KR_PER_PT).toFixed(3);
+        const _wKr  = Math.round(_wp * KR_PER_PT);
         const _tOre = (_tp * ORE_PER_PT).toFixed(1);
         const _rem  = Math.max(0, _wp * KR_PER_PT - _sp).toFixed(3);
         const _cn   = String(kid.id.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
@@ -2330,8 +2330,8 @@ function checkWalletUpdate(kidId, todayPts) {
 let _coinAnimating = false; // prevent overlapping sequences
 
 async function animateCoinsToWallet(kidId, gained, todayPts) {
-  // Week total for final display
-  const finalPts = getWeekPtsForKid(kidId, STATE.tasks);
+  // All-time total for final display
+  const finalPts = getAllTimePtsForKid(kidId, STATE.tasks);
   if(_coinAnimating) return;
   _coinAnimating = true;
 
@@ -2381,7 +2381,7 @@ async function animateCoinsToWallet(kidId, gained, todayPts) {
 
   // ── Step 4: Update wallet with bump animation ──
   const dispWeekOre = (finalPts * ORE_PER_PT).toFixed(1);
-  const dispWeekKr  = (finalPts * KR_PER_PT).toFixed(3);
+  const dispWeekKr  = Math.round(finalPts * KR_PER_PT);
   const dispTodayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const spent = totalSpentKid(kidId);
   const remaining = Math.max(0, finalPts*KR_PER_PT - spent);
@@ -2544,6 +2544,19 @@ function getTodayPtsForKid(kidId, tasks) {
   return Math.max(0,pts);
 }
 
+function getAllTimePtsForKid(kidId, tasks) {
+  let total = 0;
+  Object.keys(STATE.done).forEach(day => {
+    const dayDone = STATE.done[day];
+    const kidDone = dayDone[kidId]||{};
+    tasks.forEach(t=>{ total+=(kidDone[t.id]||0)*t.points; });
+    ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
+    const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
+    total += (adj.bonus||0)-(adj.penalty||0);
+  });
+  return Math.max(0, total);
+}
+
 // Spending stored in STATE.spending = { kidId: [{desc,kr,date},...] }
 function getSpendingForKid(kidId) {
   return ((STATE.spending||{})[kidId]||[]);
@@ -2697,12 +2710,12 @@ function openCardDetail(kidId) {
   const kid = kids.find(k => k.id === kidId);
   if(!kid) return;
   const col      = COLORS[kid.color] || COLORS.pink;
-  const weekPts  = getWeekPtsForKid(kidId, tasks);
+  const allPts   = getAllTimePtsForKid(kidId, tasks);
   const todayPts = getTodayPtsForKid(kidId, tasks);
   const spent    = totalSpentKid(kidId);
-  const remaining = Math.max(0, weekPts * KR_PER_PT - spent);
-  const weekOre  = (weekPts  * ORE_PER_PT).toFixed(1);
-  const weekKr   = (weekPts  * KR_PER_PT).toFixed(3);
+  const remaining = Math.max(0, allPts * KR_PER_PT - spent);
+  const weekOre  = (allPts  * ORE_PER_PT).toFixed(1);
+  const weekKr   = Math.round(allPts  * KR_PER_PT);
   const todayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const spendList = getSpendingForKid(kidId).slice().reverse();
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
@@ -2727,10 +2740,10 @@ function openCardDetail(kidId) {
     <div class="cd-section">
       <div class="cd-section-label">Account Balance</div>
       <div class="cd-bal-grid">
-        <div class="cd-bal-box"><div class="cd-bal-amount">${weekOre} öre</div><div class="cd-bal-label">This week · öre</div></div>
-        <div class="cd-bal-box"><div class="cd-bal-amount">${weekKr} kr</div><div class="cd-bal-label">This week · kr</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${weekOre} öre</div><div class="cd-bal-label">All-time · öre</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${weekKr} kr</div><div class="cd-bal-label">All-time · kr</div></div>
         <div class="cd-bal-box"><div class="cd-bal-amount">${todayOre} öre</div><div class="cd-bal-label">Today</div></div>
-        <div class="cd-bal-box"><div class="cd-bal-amount ${remClass}">${remaining.toFixed(3)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount ${remClass}">${Math.round(remaining)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
       </div>
     </div>
     <div class="cd-section">
