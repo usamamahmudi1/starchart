@@ -780,18 +780,37 @@
   .levelup-text { font-family:'Fredoka One',cursive; font-size:1.8rem; color:#FFD700; }
   .levelup-sub { font-size:1rem; opacity:0.7; margin-top:0.25rem; }
 
-  /* ══ BANK CARD ══ */
+  /* ══ NORDEA-STYLE BANK CARD ══ */
   .wallet-card {
     margin: 1rem 0 0;
-    background: linear-gradient(135deg, #0f2027 0%, #203a43 45%, #2c5364 100%);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 20px;
-    padding: 1.15rem 1.15rem 1rem;
+    aspect-ratio: 85.6 / 54;
+    background: linear-gradient(145deg, #00005E 0%, #0000A0 50%, #00005E 100%);
+    border-radius: 14px;
+    padding: 0;
     position: relative; overflow: hidden;
-    box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3),
-                inset 0 1px 0 rgba(255,255,255,0.08);
-    /* Embossed edge */
-    outline: 1px solid rgba(0,0,0,0.3);
+    cursor: pointer;
+    box-shadow: 0 8px 32px rgba(0,0,30,0.55), 0 2px 8px rgba(0,0,0,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.12);
+    transition: transform 0.18s, box-shadow 0.18s;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .wallet-card:hover  { transform: translateY(-3px) scale(1.015); box-shadow: 0 16px 44px rgba(0,0,30,0.65), inset 0 1px 0 rgba(255,255,255,0.12); }
+  .wallet-card:active { transform: scale(0.97); }
+  /* Holographic sheen stripe */
+  .wallet-card::before {
+    content:''; position:absolute; top:0; left:-70%; width:35%; height:100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.07), transparent);
+    animation: wallet-sheen 5s ease-in-out infinite;
+    z-index: 2;
+  }
+  @keyframes wallet-sheen { 0%{left:-70%} 60%,100%{left:130%} }
+  /* Subtle dot-pattern overlay */
+  .wallet-card::after {
+    content:''; position:absolute; inset:0;
+    background-image: radial-gradient(circle, rgba(255,255,255,0.035) 1px, transparent 1px);
+    background-size: 18px 18px;
+    pointer-events: none; z-index: 0;
   }
   /* EMV chip graphic */
   .bank-chip {
@@ -806,111 +825,140 @@
     background: linear-gradient(135deg, #E8C060, #B08030);
     border-radius: 2px;
   }
-  /* Contactless icon */
-  .bank-contactless {
-    font-size: 1.1rem; opacity:0.6; flex-shrink:0;
+  .bank-contactless { font-size: 0.95rem; opacity:0.6; flex-shrink:0; }
+  /* Card inner layout */
+  .wc-inner {
+    position: relative; z-index: 1;
+    height: 100%; display: flex; flex-direction: column;
+    padding: 0.7rem 0.85rem 0.6rem;
+    box-sizing: border-box;
   }
-  /* Sheen stripe */
-  .wallet-card::before {
-    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
-    animation: wallet-sheen 4s ease-in-out infinite;
+  .wc-top {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 0.3rem;
   }
-  @keyframes wallet-sheen { 0%{left:-60%} 60%,100%{left:130%} }
-
-  /* Header row */
-  .wallet-header {
-    display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem;
+  .wc-bank-name {
+    font-family: 'Fredoka One', cursive;
+    font-size: 0.7rem; letter-spacing: 0.12em;
+    color: rgba(255,255,255,0.85);
   }
-  .wallet-icon-big {
-    font-size: 2.4rem;
-    filter: drop-shadow(0 0 10px rgba(255,215,0,0.6));
-    line-height: 1;
+  .wc-nordea-n {
+    font-family: 'Fredoka One', cursive; font-size: 1.25rem; line-height: 1;
+    color: white; text-shadow: 0 0 10px rgba(255,255,255,0.35);
   }
-  .wallet-title-block { flex:1; }
-  .wallet-title {
-    font-family: 'Fredoka One', cursive; font-size: 1.15rem;
-    color: #FFD700; line-height: 1;
-  }
-  .wallet-subtitle { font-size: 0.68rem; opacity: 0.45; letter-spacing: 0.05em; margin-top: 2px; }
-
-  /* Two currency rows */
-  .wallet-rows { display: flex; flex-direction: column; gap: 0.55rem; }
-  .wallet-row {
-    display: flex; align-items: center; gap: 0.6rem;
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px; padding: 0.55rem 0.75rem;
-  }
-  .wallet-row-icon {
-    font-size: 1.5rem; line-height:1; flex-shrink:0;
-  }
-  .wallet-row-body { flex:1; min-width:0; }
-  .wallet-row-label {
-    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em;
-    opacity: 0.45; margin-bottom: 1px;
+  .wc-chip-row { display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.2rem; }
+  .wc-balance-row { margin: auto 0 0.3rem; }
+  .wc-field-label {
+    font-size: 0.44rem; text-transform: uppercase; letter-spacing: 0.1em;
+    opacity: 0.42; margin-bottom: 1px; color: white;
   }
   .wallet-row-value {
-    font-family: 'Fredoka One', cursive; font-size: 1.45rem; line-height: 1;
+    font-family: 'Fredoka One', cursive; font-size: 1.05rem; line-height: 1;
     background: linear-gradient(90deg, #FFD700, #FF9500);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
   .wallet-row-value.bump { animation: wallet-bump 0.4s cubic-bezier(0.34,1.56,0.64,1); }
-  .wallet-row-value.kr { font-size: 1.25rem; }
   @keyframes wallet-bump {
     0%  { transform: scale(1); }
     45% { transform: scale(1.28); }
     100%{ transform: scale(1); }
   }
-  /* Mini coin icons row */
-  .wallet-coin-row {
-    display: flex; flex-wrap: wrap; gap: 3px;
-    margin-top: 0.5rem; min-height: 1.2rem;
+  .wc-bottom {
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 0.4rem;
   }
+  .wc-name {
+    font-family: 'Fredoka One', cursive; font-size: 0.68rem;
+    letter-spacing: 0.06em; color: rgba(255,255,255,0.9);
+    text-transform: uppercase; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; max-width: 110px;
+  }
+  .wc-expiry { font-size: 0.5rem; opacity: 0.5; letter-spacing: 0.05em; margin-top: 1px; color: white; }
+  /* Mastercard-style circles */
+  .wc-network { display: flex; align-items: center; flex-shrink: 0; }
+  .wc-mc-left, .wc-mc-right { width: 20px; height: 20px; border-radius: 50%; }
+  .wc-mc-left  { background: rgba(235,0,27,0.82); margin-right: -9px; }
+  .wc-mc-right { background: rgba(255,130,0,0.72); }
+  /* Tap hint */
+  .wc-tap-hint {
+    position: absolute; bottom: 5px; right: 8px;
+    font-size: 0.44rem; opacity: 0.3; letter-spacing: 0.07em;
+    pointer-events: none; z-index: 3; text-transform: uppercase; color: white;
+  }
+  /* Keep pip animation (used by coin animation) */
   .wallet-coin-pip {
     font-size: 0.85rem; line-height: 1;
     animation: pip-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
   }
   @keyframes pip-pop { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
-  /* ── Bank card spending section ── */
-  .bank-divider {
-    height:1px; background:rgba(255,255,255,0.1); margin:0.85rem 0;
+
+  /* ── Card Detail Modal (bottom sheet) ── */
+  .card-detail-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+    display: flex; align-items: flex-end; justify-content: center;
   }
-  .bank-section-label {
-    font-size:0.62rem; text-transform:uppercase; letter-spacing:0.08em;
-    opacity:0.4; margin-bottom:0.5rem;
+  .card-detail-sheet {
+    background: linear-gradient(180deg, #0d0b2e 0%, #1a1740 100%);
+    border: 1px solid rgba(255,255,255,0.12); border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    padding: 1.25rem 1.5rem 2.5rem;
+    width: 100%; max-width: 480px;
+    max-height: 82vh; overflow-y: auto;
+    animation: sheet-up 0.3s cubic-bezier(0.34,1.56,0.64,1);
   }
-  .spend-row {
-    display:flex; align-items:center; gap:0.6rem;
-    font-size:0.82rem; padding:0.3rem 0;
-    border-bottom:1px solid rgba(255,255,255,0.05);
+  @keyframes sheet-up { from{transform:translateY(100%)} to{transform:translateY(0)} }
+  .cd-handle {
+    width: 40px; height: 4px;
+    background: rgba(255,255,255,0.2); border-radius: 999px; margin: 0 auto 1.25rem;
   }
-  .spend-row:last-child { border-bottom:none; }
-  .spend-row-date { opacity:0.4; font-size:0.7rem; flex-shrink:0; }
-  .spend-row-desc { flex:1; }
-  .spend-row-amt  { color:#FF6B6B; font-weight:700; flex-shrink:0; }
-  .spend-add-row  {
-    display:flex; gap:0.4rem; margin-top:0.6rem; flex-wrap:wrap;
+  .cd-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.25rem; }
+  .cd-avatar {
+    width: 52px; height: 52px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.8rem; flex-shrink: 0;
   }
-  .spend-input {
-    flex:1; min-width:80px; padding:0.35rem 0.5rem;
-    background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15);
-    border-radius:8px; color:white; font-family:'Nunito',sans-serif;
-    font-size:0.8rem; outline:none;
+  .cd-kid-name { font-family: 'Fredoka One', cursive; font-size: 1.5rem; }
+  .cd-acct { font-size: 0.7rem; opacity: 0.42; letter-spacing: 0.08em; font-family: 'Courier New', monospace; }
+  .cd-section { margin-bottom: 1.25rem; }
+  .cd-section-label {
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em;
+    opacity: 0.4; margin-bottom: 0.6rem;
   }
-  .spend-input:focus { border-color:rgba(255,100,100,0.5); }
-  .bank-balance-row {
-    display:flex; justify-content:space-between; align-items:baseline;
-    margin-top:0.5rem; padding-top:0.5rem;
-    border-top:1px solid rgba(255,255,255,0.1);
+  .cd-bal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  .cd-bal-box {
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 14px; padding: 0.85rem 1rem;
   }
-  .bank-balance-label { font-size:0.68rem; opacity:0.5; text-transform:uppercase; letter-spacing:0.06em; }
-  .bank-balance-val {
-    font-family:'Fredoka One',cursive; font-size:1.3rem;
-    background:linear-gradient(90deg,#4ECDC4,#44CF8E);
+  .cd-bal-amount {
+    font-family: 'Fredoka One', cursive; font-size: 1.25rem;
+    background: linear-gradient(90deg,#FFD700,#FF9500);
     -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
   }
-  .bank-balance-val.negative { background:linear-gradient(90deg,#FF6B6B,#FF4444); }
+  .cd-bal-amount.teal {
+    background: linear-gradient(90deg,#4ECDC4,#44CF8E);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .cd-bal-amount.red  {
+    background: linear-gradient(90deg,#FF6B6B,#FF4444);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .cd-bal-label { font-size: 0.65rem; opacity: 0.5; margin-top: 2px; }
+  .cd-txn-row {
+    display: flex; align-items: center; gap: 0.6rem;
+    padding: 0.55rem 0; border-bottom: 1px solid rgba(255,255,255,0.06); font-size: 0.88rem;
+  }
+  .cd-txn-row:last-child { border-bottom: none; }
+  .cd-txn-date { opacity: 0.4; font-size: 0.72rem; flex-shrink: 0; min-width: 52px; }
+  .cd-txn-desc { flex: 1; }
+  .cd-txn-amt  { color: #FF6B6B; font-weight: 700; flex-shrink: 0; }
+  .cd-close-btn {
+    width: 100%; padding: 0.85rem;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 14px; color: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; transition: background 0.15s; margin-top: 0.5rem;
+  }
+  .cd-close-btn:hover { background: rgba(255,255,255,0.12); }
 
   /* Flying coin */
   .fly-coin {
@@ -1536,65 +1584,48 @@ function renderKidsView() {
       <div class="kid-points-label">points today</div>
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
-      <div class="wallet-card" id="wallet-${(()=>{
-        const weekPts = getWeekPtsForKid(kid.id, tasks);
-        const todayPts2 = getTodayPtsForKid(kid.id, tasks);
-        const weekOre = (weekPts * ORE_PER_PT).toFixed(1);
-        const weekKr  = (weekPts * KR_PER_PT).toFixed(3);
-        const todayOre = (todayPts2 * ORE_PER_PT).toFixed(1);
-        const spent  = totalSpentKid(kid.id);
-        const remaining = Math.max(0, weekPts*KR_PER_PT - spent);
-        const spendList = getSpendingForKid(kid.id).slice(-3).reverse();
-        const wr = getCurrentWeekRange();
-        const pipCount = Math.min(weekPts, 24);
-        return kid.id;
-      })()}">
-        <!-- Card top row: chip + contactless + card label -->
-        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.9rem">
-          <div class="bank-chip"><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div></div>
-          <div style="flex:1">
-            <div style="font-family:'Fredoka One',cursive;font-size:0.95rem;color:rgba(255,255,255,0.9);letter-spacing:0.04em">${escHtml(kid.name)}'s Bank Card</div>
-            <div style="font-size:0.62rem;opacity:0.4;letter-spacing:0.06em;margin-top:1px">1 pt = 4.29 öre · 100 öre = 1 kr</div>
-          </div>
-          <div class="bank-contactless">📶</div>
-        </div>
-        <!-- Two currency rows -->
-        <div class="wallet-rows">
-          <div class="wallet-row">
-            <div class="wallet-row-icon">🪙</div>
-            <div class="wallet-row-body">
-              <div class="wallet-row-label">This week · öre</div>
-              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${(()=>{const w=getWeekPtsForKid(kid.id,tasks);return(w*ORE_PER_PT).toFixed(1);})()} öre</div>
+      ${(()=>{
+        const _wp  = getWeekPtsForKid(kid.id, tasks);
+        const _tp  = getTodayPtsForKid(kid.id, tasks);
+        const _sp  = totalSpentKid(kid.id);
+        const _wOre = (_wp * ORE_PER_PT).toFixed(1);
+        const _wKr  = (_wp * KR_PER_PT).toFixed(3);
+        const _tOre = (_tp * ORE_PER_PT).toFixed(1);
+        const _rem  = Math.max(0, _wp * KR_PER_PT - _sp).toFixed(3);
+        const _cn   = String(kid.id.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
+        return `<div class="wallet-card" id="wallet-${kid.id}" onclick="openCardDetail('${kid.id}')">
+          <div class="wc-inner">
+            <div class="wc-top">
+              <span class="wc-bank-name">STAR BANK</span>
+              <span class="wc-nordea-n">N</span>
             </div>
-            <div style="text-align:right;flex-shrink:0">
-              <div class="wallet-row-label">Today</div>
-              <div style="font-size:0.8rem;opacity:0.7;font-family:'Fredoka One',cursive;color:#FFD700" id="wallet-today-${kid.id}">${(getTodayPtsForKid(kid.id,tasks)*ORE_PER_PT).toFixed(1)} öre</div>
+            <div class="wc-chip-row">
+              <div class="bank-chip"><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div></div>
+              <span class="bank-contactless">📶</span>
+              <span id="wallet-today-${kid.id}" style="display:none">${_tOre}</span>
+              <span id="wallet-kronor-${kid.id}" style="display:none">${_wKr}</span>
+              <span id="wallet-remaining-${kid.id}" style="display:none">${_rem}</span>
+              <span id="wallet-pips-${kid.id}" style="display:none"></span>
             </div>
-          </div>
-          <div class="wallet-row">
-            <div class="wallet-row-icon">💰</div>
-            <div class="wallet-row-body">
-              <div class="wallet-row-label">This week · kr</div>
-              <div class="wallet-row-value kr" id="wallet-kronor-${kid.id}">${(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT).toFixed(3)} kr</div>
+            <div class="wc-balance-row">
+              <div class="wc-field-label">BALANCE</div>
+              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${_wOre} öre</div>
+            </div>
+            <div class="wc-bottom">
+              <div>
+                <div class="wc-field-label">CARD HOLDER</div>
+                <div class="wc-name">${escHtml(kid.name)}</div>
+                <div class="wc-expiry">VALID THRU 12/30</div>
+              </div>
+              <div class="wc-network">
+                <div class="wc-mc-left"></div>
+                <div class="wc-mc-right"></div>
+              </div>
             </div>
           </div>
-        </div>
-        <!-- Pip row -->
-        <div class="wallet-coin-row" id="wallet-pips-${kid.id}">${Array.from({length:Math.min(getWeekPtsForKid(kid.id,tasks),24)},()=>'🪙').join('')}</div>
-        <!-- Spending section -->
-        <div class="bank-divider"></div>
-        <div class="bank-section-label">💸 Spending record</div>
-        <div id="wallet-spend-list-${kid.id}">${(()=>{
-          const entries = getSpendingForKid(kid.id).slice(-3).reverse();
-          if(!entries.length) return '<div style="opacity:0.35;font-size:0.78rem;padding:0.2rem 0">No spending yet</div>';
-          return entries.map(e=>`<div class="spend-row"><span class="spend-row-date">${e.date||''}</span><span class="spend-row-desc">${escHtml(e.desc||'Spent')}</span><span class="spend-row-amt">−${(e.kr||0).toFixed(2)} kr</span></div>`).join('');
-        })()}</div>
-        <!-- Balance row -->
-        <div class="bank-balance-row">
-          <div><div class="bank-balance-label">Earned this week</div><div style="font-size:0.8rem;opacity:0.6">${(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT).toFixed(3)} kr</div></div>
-          <div style="text-align:right"><div class="bank-balance-label">Remaining</div><div class="bank-balance-val ${totalSpentKid(kid.id)>(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT)?'negative':''}" id="wallet-remaining-${kid.id}">${(Math.max(0,getWeekPtsForKid(kid.id,tasks)*KR_PER_PT-totalSpentKid(kid.id))).toFixed(3)} kr</div></div>
-        </div>
-      </div>
+          <div class="wc-tap-hint">TAP FOR DETAILS</div>
+        </div>`;
+      })()}
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
     </div>`;
   }).join('');
@@ -2662,6 +2693,60 @@ function triggerCelebration(level) {
 init();
 
 // Make functions available globally (needed for onclick handlers in HTML)
+function openCardDetail(kidId) {
+  const { kids, tasks } = getData();
+  const kid = kids.find(k => k.id === kidId);
+  if(!kid) return;
+  const col      = COLORS[kid.color] || COLORS.pink;
+  const weekPts  = getWeekPtsForKid(kidId, tasks);
+  const todayPts = getTodayPtsForKid(kidId, tasks);
+  const spent    = totalSpentKid(kidId);
+  const remaining = Math.max(0, weekPts * KR_PER_PT - spent);
+  const weekOre  = (weekPts  * ORE_PER_PT).toFixed(1);
+  const weekKr   = (weekPts  * KR_PER_PT).toFixed(3);
+  const todayOre = (todayPts * ORE_PER_PT).toFixed(1);
+  const spendList = getSpendingForKid(kidId).slice().reverse();
+  const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
+  const remClass = remaining < 0 ? 'red' : 'teal';
+  const txnHtml  = spendList.length
+    ? spendList.map(e=>`<div class="cd-txn-row">
+        <span class="cd-txn-date">${e.date||''}</span>
+        <span class="cd-txn-desc">${escHtml(e.desc||'Spent')}</span>
+        <span class="cd-txn-amt">−${(e.kr||0).toFixed(2)} kr</span>
+      </div>`).join('')
+    : '<div style="opacity:0.4;font-size:0.85rem;padding:0.5rem 0">No transactions yet</div>';
+  const overlay = document.getElementById('card-detail-overlay');
+  overlay.innerHTML = `<div class="card-detail-sheet" onclick="event.stopPropagation()">
+    <div class="cd-handle"></div>
+    <div class="cd-header">
+      <div class="cd-avatar" style="background:linear-gradient(135deg,${col.grad})">${kid.emoji||'⭐'}</div>
+      <div>
+        <div class="cd-kid-name" style="color:${col.main}">${escHtml(kid.name)}</div>
+        <div class="cd-acct">ACCT **** **** **** ${cardNum}</div>
+      </div>
+    </div>
+    <div class="cd-section">
+      <div class="cd-section-label">Account Balance</div>
+      <div class="cd-bal-grid">
+        <div class="cd-bal-box"><div class="cd-bal-amount">${weekOre} öre</div><div class="cd-bal-label">This week · öre</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${weekKr} kr</div><div class="cd-bal-label">This week · kr</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${todayOre} öre</div><div class="cd-bal-label">Today</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount ${remClass}">${remaining.toFixed(3)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
+      </div>
+    </div>
+    <div class="cd-section">
+      <div class="cd-section-label">Transaction History</div>
+      ${txnHtml}
+    </div>
+    <button class="cd-close-btn" onclick="closeCardDetail()">Close</button>
+  </div>`;
+  overlay.style.display = 'flex';
+}
+
+function closeCardDetail() {
+  document.getElementById('card-detail-overlay').style.display = 'none';
+}
+
 window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
