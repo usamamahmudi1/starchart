@@ -234,7 +234,7 @@
   .kid-level-inline {
     display: flex; align-items: center; gap: 0.3rem; margin: 1px 0 2px;
   }
-  .kid-level-label-sm { font-size: 0.72rem; opacity: 0.65; }
+  .kid-level-label-sm { font-size: 0.95rem; opacity: 0.85; font-weight: 700; }
   .kid-pts-inline { display: flex; align-items: baseline; gap: 0.3rem; flex-wrap: wrap; }
   .kid-pts-num {
     font-family: 'Fredoka One', cursive; font-size: 2rem; line-height: 1;
@@ -1634,7 +1634,6 @@ function renderKidsView() {
           </div>
         </div>
       </div>
-      ${tasks.length||kidDeeds.length?`<div class="kid-tasks-scroll"><ul class="kid-tasks-list">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul></div>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       ${(()=>{
         const _wp  = getAllTimePtsForKid(kid.id, tasks);
         const _tp  = getTodayPtsForKid(kid.id, tasks);
@@ -1648,7 +1647,6 @@ function renderKidsView() {
           <div class="wc-inner">
             <div class="wc-top">
               <span class="wc-bank-name">STAR BANK</span>
-              <span class="wc-nordea-n">N</span>
             </div>
             <div class="wc-chip-row">
               <div class="bank-chip"><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div></div>
@@ -1677,6 +1675,7 @@ function renderKidsView() {
           <div class="wc-tap-hint">TAP FOR DETAILS</div>
         </div>`;
       })()}
+      ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:0.75rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
