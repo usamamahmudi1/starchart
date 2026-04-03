@@ -2757,6 +2757,7 @@ window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
 window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
 window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
+window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
@@ -2806,6 +2807,9 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
     </div>
   </div>
 </div>
+
+<!-- Card Detail Modal -->
+<div class="card-detail-overlay" id="card-detail-overlay" style="display:none" onclick="closeCardDetail()"></div>
 
 <!-- Coin counter bubble -->
 <div class="coin-counter-bubble" id="coin-bubble"></div>
