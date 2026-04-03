@@ -780,41 +780,78 @@
   .levelup-text { font-family:'Fredoka One',cursive; font-size:1.8rem; color:#FFD700; }
   .levelup-sub { font-size:1rem; opacity:0.7; margin-top:0.25rem; }
 
-  /* ── Wallet ── */
+  /* ══ BIG WALLET CARD ══ */
   .wallet-card {
-    margin: 0.75rem 0 0;
-    background: linear-gradient(135deg, rgba(255,215,0,0.12), rgba(255,140,0,0.08));
-    border: 1px solid rgba(255,215,0,0.3);
-    border-radius: 16px; padding: 0.85rem 1rem;
-    display: flex; align-items: center; gap: 0.75rem;
-    position: relative; overflow: visible;
+    margin: 1rem 0 0;
+    background: linear-gradient(145deg, #1c1445 0%, #2a1a5e 45%, #1c1445 100%);
+    border: 1.5px solid rgba(255,215,0,0.45);
+    border-radius: 20px;
+    padding: 1.1rem 1.1rem 1rem;
+    position: relative; overflow: hidden;
+    box-shadow: 0 4px 28px rgba(255,165,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06);
   }
-  .wallet-icon {
-    font-size: 1.8rem; flex-shrink: 0;
-    filter: drop-shadow(0 0 6px rgba(255,215,0,0.5));
+  /* Sheen stripe */
+  .wallet-card::before {
+    content:''; position:absolute; top:0; left:-60%; width:40%; height:100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.04), transparent);
+    animation: wallet-sheen 4s ease-in-out infinite;
   }
-  .wallet-body { flex: 1; min-width: 0; }
-  .wallet-label {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.08em; opacity: 0.55; margin-bottom: 1px;
+  @keyframes wallet-sheen { 0%{left:-60%} 60%,100%{left:130%} }
+
+  /* Header row */
+  .wallet-header {
+    display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem;
   }
-  .wallet-pts {
-    font-family: 'Fredoka One', cursive;
-    font-size: 1.6rem;
-    background: linear-gradient(90deg, #FFD700, #FFA500);
-    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-    background-clip: text;
-    transition: transform 0.2s;
+  .wallet-icon-big {
+    font-size: 2.4rem;
+    filter: drop-shadow(0 0 10px rgba(255,215,0,0.6));
+    line-height: 1;
   }
-  .wallet-pts.bump { animation: wallet-bump 0.35s ease; }
+  .wallet-title-block { flex:1; }
+  .wallet-title {
+    font-family: 'Fredoka One', cursive; font-size: 1.15rem;
+    color: #FFD700; line-height: 1;
+  }
+  .wallet-subtitle { font-size: 0.68rem; opacity: 0.45; letter-spacing: 0.05em; margin-top: 2px; }
+
+  /* Two currency rows */
+  .wallet-rows { display: flex; flex-direction: column; gap: 0.55rem; }
+  .wallet-row {
+    display: flex; align-items: center; gap: 0.6rem;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 0.55rem 0.75rem;
+  }
+  .wallet-row-icon {
+    font-size: 1.5rem; line-height:1; flex-shrink:0;
+  }
+  .wallet-row-body { flex:1; min-width:0; }
+  .wallet-row-label {
+    font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em;
+    opacity: 0.45; margin-bottom: 1px;
+  }
+  .wallet-row-value {
+    font-family: 'Fredoka One', cursive; font-size: 1.45rem; line-height: 1;
+    background: linear-gradient(90deg, #FFD700, #FF9500);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+  }
+  .wallet-row-value.bump { animation: wallet-bump 0.4s cubic-bezier(0.34,1.56,0.64,1); }
+  .wallet-row-value.kr { font-size: 1.25rem; }
   @keyframes wallet-bump {
     0%  { transform: scale(1); }
-    40% { transform: scale(1.22); }
+    45% { transform: scale(1.28); }
     100%{ transform: scale(1); }
   }
-  .wallet-streak {
-    font-size: 0.72rem; opacity: 0.5; margin-top: 1px;
+  /* Mini coin icons row */
+  .wallet-coin-row {
+    display: flex; flex-wrap: wrap; gap: 3px;
+    margin-top: 0.5rem; min-height: 1.2rem;
   }
+  .wallet-coin-pip {
+    font-size: 0.85rem; line-height: 1;
+    animation: pip-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
+  }
+  @keyframes pip-pop { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
   /* Flying coin */
   .fly-coin {
     position: fixed; z-index: 500; pointer-events: none;
@@ -876,15 +913,7 @@
     font-size:0.9rem; outline:none;
   }
   .bonus-input:focus { border-color:rgba(255,215,0,0.5); }
-  /* ── Wallet öre/kronor display ── */
-  .wallet-ore {
-    font-family:'Fredoka One',cursive; font-size:1.55rem;
-    background:linear-gradient(90deg,#FFD700,#FFA500);
-    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
-    transition:transform 0.2s;
-  }
-  .wallet-ore.bump { animation:wallet-bump 0.35s ease; }
-  .wallet-kronor { font-size:0.75rem; opacity:0.65; margin-top:1px; }
+
   /* ── Kid mark card — task pts reduction hint ── */
   .reduce-hint { font-size:0.7rem; opacity:0.45; margin-left:4px; }
 </style>
@@ -1446,12 +1475,30 @@ function renderKidsView() {
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
       <div class="wallet-card" id="wallet-${kid.id}">
-        <div class="wallet-icon">👛</div>
-        <div class="wallet-body">
-          <div class="wallet-label">Today's Wallet</div>
-          <div class="wallet-ore" id="wallet-pts-${kid.id}">${pts*5} öre</div>
-          <div class="wallet-kronor" id="wallet-kronor-${kid.id}">${pts===0?'Start earning!':'= '+(pts*5/100).toFixed(2)+' kr'}</div>
+        <div class="wallet-header">
+          <div class="wallet-icon-big">👛</div>
+          <div class="wallet-title-block">
+            <div class="wallet-title">Today's Wallet</div>
+            <div class="wallet-subtitle">1 pt = 4.29 öre · 100 öre = 1 kr</div>
+          </div>
         </div>
+        <div class="wallet-rows">
+          <div class="wallet-row">
+            <div class="wallet-row-icon">🪙</div>
+            <div class="wallet-row-body">
+              <div class="wallet-row-label">Öre earned</div>
+              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${(pts*4.2857).toFixed(1)} öre</div>
+            </div>
+          </div>
+          <div class="wallet-row">
+            <div class="wallet-row-icon">💰</div>
+            <div class="wallet-row-body">
+              <div class="wallet-row-label">Kronor total</div>
+              <div class="wallet-row-value kr" id="wallet-kronor-${kid.id}">${pts===0?'0.00 kr':((pts*0.042857).toFixed(3))+' kr'}</div>
+            </div>
+          </div>
+        </div>
+        <div class="wallet-coin-row" id="wallet-pips-${kid.id}">${'🪙'.repeat(Math.min(pts,20))}</div>
       </div>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
     </div>`;
@@ -2155,8 +2202,11 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   const walletKrEl  = document.getElementById('wallet-kronor-'+kidId);
   if(!walletEl || !walletOreEl) { _coinAnimating=false; return; }
 
-  const gainedOre = gained * 5;
-  const finalOre  = finalPts * 5;
+  const ORE_PER_PT = 4.2857;
+  const KR_PER_PT  = 0.042857;
+  const gainedOre = (gained * ORE_PER_PT).toFixed(1);
+  const finalOre  = (finalPts * ORE_PER_PT).toFixed(1);
+  const finalKr   = (finalPts * KR_PER_PT).toFixed(3);
 
   // ── Step 1: Show bubble for 2 seconds so kid reads how much is coming ──
   const bubble = document.getElementById('coin-bubble');
@@ -2176,7 +2226,7 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   const targetY = walletRect.top  + walletRect.height * 0.5;
 
   // Scale coin count to earned öre (5–30 coins for visual density)
-  const coinCount = Math.min(30, Math.max(5, Math.round(gainedOre / 3)));
+  const coinCount = Math.min(30, Math.max(5, Math.round(parseFloat(gainedOre) / 1.5)));
 
   // Launch all coins at once with staggered start (0–200ms)
   const coinPromises = [];
@@ -2198,7 +2248,25 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   walletOreEl.classList.remove('bump');
   void walletOreEl.offsetWidth;
   walletOreEl.classList.add('bump');
-  if(walletKrEl) walletKrEl.textContent = '= '+(finalOre/100).toFixed(2)+' kr';
+  if(walletKrEl) {
+    walletKrEl.textContent = finalKr + ' kr';
+    walletKrEl.classList.remove('bump');
+    void walletKrEl.offsetWidth;
+    walletKrEl.classList.add('bump');
+  }
+  // Update coin pips
+  const pipsEl = document.getElementById('wallet-pips-'+kidId);
+  if(pipsEl) {
+    const pipCount = Math.min(finalPts, 20);
+    pipsEl.innerHTML = '';
+    for(let p=0; p<pipCount; p++){
+      const pip = document.createElement('span');
+      pip.className='wallet-coin-pip';
+      pip.textContent='🪙';
+      pip.style.animationDelay = (p*0.04)+'s';
+      pipsEl.appendChild(pip);
+    }
+  }
 
   _coinAnimating = false;
 }
