@@ -1363,27 +1363,30 @@ function renderKidsView() {
     const stars  = starsForPoints(pts);
     const kidPending = (STATE.pending||{})[kid.id]||{};
     const taskItems = tasks.map(t => {
-      const count = kidDone[t.id]||0;
+      const count    = kidDone[t.id]||0;
       const pendCount = kidPending[t.id]||0;
-      let checkClass = 'pending', checkContent = '', nameStyle = '', ptsText = '+'+t.points+'pts';
-      let tappable = '', hint = '', tapHandler = '';
+      let checkClass='pending', checkContent='', nameStyle='', ptsText='+'+t.points+'pts';
+      let tappable='', hint='', tapHandler='', liStyle='';
+
       if(count > 0) {
+        // ── APPROVED (parent marked done) — locked, no undo ──
         checkClass='done'; checkContent=count;
         ptsText = `×${count} = +${count*t.points}pts`;
-        // Already done — tapping adds another suggestion
-        tappable = 'tappable'; hint = '<span class="tap-hint">tap again</span>';
-        tapHandler = `onclick="suggestTask('${kid.id}','${t.id}',this)"`;
+        liStyle = 'style="opacity:0.75"';
+        // no tappable, no hint, no handler
       } else if(pendCount > 0) {
+        // ── PENDING (kid tapped, waiting for parent) — tap to undo ──
         checkClass='waiting'; checkContent='⏳';
         nameStyle='style="color:#FFA500"';
-        ptsText = `⏳ waiting`;
-        // Already pending — don't allow another tap
+        ptsText='⏳ waiting';
+        tappable='tappable'; hint='<span class="tap-hint" style="color:#FFA500">tap to undo</span>';
+        tapHandler=`onclick="unsuggestTask('${kid.id}','${t.id}',this)"`;
       } else {
-        // Not done, not pending — main tap action
-        tappable = 'tappable'; hint = '<span class="tap-hint">tap to mark</span>';
-        tapHandler = `onclick="suggestTask('${kid.id}','${t.id}',this)"`;
+        // ── NOT DONE — tap to suggest ──
+        tappable='tappable'; hint='<span class="tap-hint">tap to mark</span>';
+        tapHandler=`onclick="suggestTask('${kid.id}','${t.id}',this)"`;
       }
-      return `<li class="kid-task-item ${tappable} ${pendCount>0&&!count?'pending-suggest':''}" ${tapHandler}>
+      return `<li class="kid-task-item ${tappable}" ${tapHandler} ${liStyle}>
         <div class="kid-task-check ${checkClass}">${checkContent}</div>
         <span class="kid-task-name" ${nameStyle}>${escHtml(t.name)}</span>
         <span class="kid-task-pts" style="${pendCount>0&&!count?'color:#FFA500':''}">${ptsText}</span>
@@ -1765,6 +1768,25 @@ async function suggestTask(kidId, taskId, el) {
   const kid  = STATE.kids.find(k=>k.id===kidId);
   const task = STATE.tasks.find(t=>t.id===taskId);
   toast((kid?kid.emoji+' ':'')+(task?task.name+' ':'')+'sent! ⏳ Parent will approve');
+}
+
+// ── Undo a pending suggestion (kid taps ⏳ row) ──
+async function unsuggestTask(kidId, taskId, el) {
+  // Flash red briefly to signal removal
+  el.style.background = 'rgba(231,76,60,0.2)';
+  setTimeout(()=>{ el.style.background=''; }, 500);
+
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  if(pending[kidId] && pending[kidId][taskId]) {
+    pending[kidId][taskId] = Math.max(0, (pending[kidId][taskId]||1) - 1);
+    if(pending[kidId][taskId] === 0) delete pending[kidId][taskId];
+    if(!Object.keys(pending[kidId]).length) delete pending[kidId];
+  }
+  await savePending(pending);
+
+  const kid  = STATE.kids.find(k=>k.id===kidId);
+  const task = STATE.tasks.find(t=>t.id===taskId);
+  toast((kid?kid.emoji+' ':'')+(task?task.name+' ':'')+'request removed');
 }
 
 // ── "Something not on the list?" modal — custom deed only ──
@@ -2288,7 +2310,7 @@ window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
 window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
 window.resetLevels=resetLevels;
-window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask;
+window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
