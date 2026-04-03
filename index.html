@@ -264,16 +264,36 @@
   .kh-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
   /* Day entry */
   .kh-day { margin-bottom: 1rem; }
+  .kh-card-btn {
+    margin-top: 0.5rem; width: 100%; padding: 0.45rem 0;
+    background: rgba(100,149,237,0.07);
+    border: 1px dashed rgba(100,149,237,0.3);
+    border-radius: 10px; color: rgba(150,200,255,0.7);
+    font-family: 'Nunito', sans-serif; font-size: 0.78rem; font-weight: 600;
+    cursor: pointer; transition: all 0.2s;
+  }
+  .kh-card-btn:hover { background: rgba(100,149,237,0.16); color: white; border-color: rgba(100,149,237,0.55); }
   .kh-day-header {
     display: flex; align-items: center; justify-content: space-between;
     background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 12px; padding: 0.6rem 0.85rem; margin-bottom: 0.35rem;
+    border-radius: 12px; padding: 0.6rem 0.85rem; margin-bottom: 0;
+    cursor: pointer; user-select: none; transition: background 0.15s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .kh-day-header:hover { background: rgba(255,255,255,0.1); }
+  .kh-day-chevron {
+    font-size: 0.85rem; opacity: 0.5; transition: transform 0.2s; display: inline-block;
   }
   .kh-day-date { font-weight: 800; font-size: 0.88rem; }
   .kh-day-pts {
     font-family: 'Fredoka One', cursive; font-size: 1.1rem;
     background: linear-gradient(90deg,#FFD700,#FF9500);
     -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .kh-day-detail {
+    display: none;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-top: none; border-radius: 0 0 12px 12px; margin-bottom: 0.75rem;
   }
   .kh-task-row {
     display: flex; align-items: center; gap: 0.5rem;
@@ -1209,7 +1229,6 @@
   <div class="kids-header">
     <div class="kids-title">✨ Star Chart ✨</div>
     <div class="kids-date" id="kids-date"></div>
-    <button class="kids-history-btn" onclick="openKidsHistory()">📅 My History</button>
   </div>
   <div class="kids-grid" id="kids-grid"></div>
   <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
@@ -1812,6 +1831,7 @@ function renderKidsView() {
         </div>`;
       })()}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:0.75rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
+      <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
@@ -2969,17 +2989,6 @@ function _renderKidsHistory() {
   if(!kid) return;
   const col = COLORS[kid.color]||COLORS.pink;
 
-  // Tab pills
-  const tabsHtml = kids.map(k => {
-    const c = COLORS[k.color]||COLORS.pink;
-    const active = k.id===kid.id;
-    return `<button class="kh-tab${active?' active':''}"
-      style="${active?`background:${c.main};`:'color:rgba(255,255,255,0.6)'}"
-      onclick="switchKidsHistoryTab('${k.id}')">
-      ${k.photo?`<img src="${k.photo}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px">`:''}${k.emoji&&!k.photo?k.emoji+' ':''}${escHtml(k.name)}
-    </button>`;
-  }).join('');
-
   // Collect days with data for this kid, most recent first
   const days = Object.keys(STATE.done).sort((a,b)=>b.localeCompare(a));
   const dayRows = days.map(day => {
@@ -2999,28 +3008,26 @@ function _renderKidsHistory() {
         <span class="kh-task-pts">+${earned} pts</span>
       </div>`);
     });
-    const deeds = ((dayDone.xdeeds||{})[kid.id]||[]);
-    deeds.forEach(d => {
+    ((dayDone.xdeeds||{})[kid.id]||[]).forEach(d => {
       dayPts += d.pts||0;
-      taskLines.push(`<div class="kh-task-row">
-        <span class="kh-task-icon">✨</span>
-        <span class="kh-task-name">${escHtml(d.desc||'Good deed')}</span>
-        <span class="kh-task-pts">+${d.pts||0} pts</span>
-      </div>`);
+      taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">✨</span><span class="kh-task-name">${escHtml(d.desc||'Good deed')}</span><span class="kh-task-pts">+${d.pts||0} pts</span></div>`);
     });
     const adj = ((dayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
     if(adj.bonus)   { dayPts+=adj.bonus;   taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">🎁</span><span class="kh-task-name">Bonus</span><span class="kh-task-pts" style="color:#2ecc71">+${adj.bonus} pts</span></div>`); }
     if(adj.penalty) { dayPts-=adj.penalty; taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">📉</span><span class="kh-task-name">Penalty</span><span class="kh-task-pts" style="color:#e74c3c">−${adj.penalty} pts</span></div>`); }
     if(!taskLines.length) return '';
-    const label = day === todayKey() ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const isToday = day === todayKey();
+    const label = isToday ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    const safeDay = day.replace(/-/g,'_');
     return `<div class="kh-day">
-      <div class="kh-day-header">
+      <div class="kh-day-header" onclick="toggleKhDay('${safeDay}')">
         <span class="kh-day-date">📅 ${label}</span>
-        <span class="kh-day-pts">${dayPts} pts</span>
+        <div style="display:flex;align-items:center;gap:0.5rem">
+          <span class="kh-day-pts">${dayPts} pts</span>
+          <span class="kh-day-chevron" id="kh-chev-${safeDay}">›</span>
+        </div>
       </div>
-      <div style="background:rgba(255,255,255,0.03);border-radius:0 0 10px 10px;border:1px solid rgba(255,255,255,0.06);border-top:none">
-        ${taskLines.join('')}
-      </div>
+      <div class="kh-day-detail" id="kh-detail-${safeDay}">${taskLines.join('')}</div>
     </div>`;
   }).filter(Boolean).join('');
 
@@ -3028,14 +3035,22 @@ function _renderKidsHistory() {
     <div class="kh-sheet" onclick="event.stopPropagation()">
       <div class="kh-handle-bar">
         <div class="kh-handle"></div>
-        <div class="kh-title">📅 My Points History</div>
-        <div class="kh-tabs">${tabsHtml}</div>
+        <div class="kh-title" style="color:${col.main}">${kid.photo?`<img src="${kid.photo}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:6px">`:(kid.emoji||'⭐')+' '}${escHtml(kid.name)}'s History</div>
       </div>
       <div class="kh-body">
         ${dayRows || '<div class="kh-empty">No points earned yet — keep going! 🌟</div>'}
       </div>
       <button class="kh-close-btn" onclick="closeKidsHistory()">Close</button>
     </div>`;
+}
+
+function toggleKhDay(safeDay) {
+  const detail = document.getElementById('kh-detail-'+safeDay);
+  const chev   = document.getElementById('kh-chev-'+safeDay);
+  if(!detail) return;
+  const opening = detail.style.display === 'none' || detail.style.display === '';
+  detail.style.display = opening ? 'block' : 'none';
+  if(chev) chev.style.transform = opening ? 'rotate(90deg)' : '';
 }
 
 function openCardDetail(kidId) {
@@ -3135,7 +3150,7 @@ window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
 window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
 window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePhotoUpload;
-window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab;
+window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab; window.toggleKhDay=toggleKhDay;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
