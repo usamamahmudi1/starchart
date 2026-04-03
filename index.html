@@ -618,6 +618,15 @@
     font-family:'Fredoka One',cursive; font-size:1.1rem;
   }
   .task-edit-name, .task-edit-pts { padding:0.45rem 0.7rem; font-size:0.9rem; }
+  .pts-override-input {
+    width: 52px; text-align: center; padding: 0.25rem 0.3rem;
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2);
+    border-radius: 6px; color: white; font-family: 'Nunito', sans-serif;
+    font-size: 0.88rem; outline: none; -moz-appearance: textfield;
+  }
+  .pts-override-input::-webkit-inner-spin-button,
+  .pts-override-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .pts-override-input:focus { border-color: rgba(255,215,0,0.55); }
   .drag-handle {
     width:28px; flex-shrink:0; cursor:grab; display:flex; align-items:center;
     justify-content:center; opacity:0.4; font-size:1rem; user-select:none;
@@ -1539,6 +1548,13 @@ function toast(msg) {
   clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'), 2200);
 }
 
+// Returns effective pts-per-unit for a task, respecting parent overrides.
+// Overrides are stored as done[date][kidId]['_pts'][taskId].
+function getTaskPts(kidDone, taskId, defaultPts) {
+  const ov = (kidDone['_pts']||{})[taskId];
+  return (ov !== undefined) ? ov : defaultPts;
+}
+
 function getEmoji(pts) {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
   let level = levels[0];
@@ -1594,7 +1610,7 @@ function renderKidsView() {
   }
   grid.innerHTML = kids.map(kid => {
     const kidDone = todayDone[kid.id] || {};
-    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdjKV = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
@@ -1744,7 +1760,7 @@ function renderMarkTab() {
   }
   grid.innerHTML = approvalHtml + kids.map(kid => {
     const kidDone = todayDone[kid.id]||{};
-    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+    let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdj2 = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
@@ -1753,9 +1769,16 @@ function renderMarkTab() {
     const level = getEmoji(pts);
     const counters = tasks.map(t => {
       const count = kidDone[t.id]||0;
+      const customPts = getTaskPts(kidDone, t.id, t.points);
       return `<div class="toggle-wrap">
         <span class="toggle-label">${escHtml(t.name)}</span>
-        <span class="toggle-pts">+${t.points}pts each</span>
+        <div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+          <input class="pts-override-input" type="number" min="0" max="${t.points}"
+            id="pts-ovr-${kid.id}-${t.id}" value="${customPts}"
+            title="Pts to award (max ${t.points})"
+            onchange="setCustomPts('${kid.id}','${t.id}',this.value)">
+          <span style="font-size:0.68rem;opacity:0.45">/ ${t.points} pts</span>
+        </div>
         <div class="counter-wrap">
           <button class="counter-btn" onclick="adjustTask('${kid.id}','${t.id}',-1,this)" ${count===0?'disabled':''}>−</button>
           <span class="counter-val" id="cnt-${kid.id}-${t.id}">${count}</span>
@@ -1825,14 +1848,35 @@ async function adjustTask(kidId, taskId, delta, btn) {
   if(cntEl) cntEl.textContent = next;
   btn.closest('.counter-wrap').querySelector('.counter-btn').disabled = (next===0);
   // Recalc badge
-  let pts=0; STATE.tasks.forEach(t=>{ pts+=(done[tk][kidId][t.id]||0)*t.points; });
+  let pts=0; STATE.tasks.forEach(t=>{ pts+=(done[tk][kidId][t.id]||0)*getTaskPts(done[tk][kidId], t.id, t.points); });
   const badge = document.getElementById('pts-badge-'+kidId);
   if(badge) { const lv=getEmoji(pts); badge.textContent=lv.emoji+' '+pts+'pts'; }
   if(delta>0) {
     const rect=btn.getBoundingClientRect(); confetti(rect.left,rect.top);
     const t=STATE.tasks.find(t=>t.id===taskId);
-    toast('Awesome! ⭐ +' + (t?t.points:0)+'pts');
+    const awarded = getTaskPts(done[tk][kidId], taskId, t?t.points:0);
+    toast('Awesome! ⭐ +' + awarded + 'pts');
   }
+  await saveDone(done);
+}
+
+async function setCustomPts(kidId, taskId, val) {
+  const task = STATE.tasks.find(t=>t.id===taskId);
+  const max = task ? task.points : 9999;
+  const pts = Math.min(max, Math.max(0, parseInt(val)||0));
+  // Clamp the input visually
+  const inp = document.getElementById('pts-ovr-'+kidId+'-'+taskId);
+  if(inp) inp.value = pts;
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk][kidId]) done[tk][kidId]={};
+  if(!done[tk][kidId]['_pts']) done[tk][kidId]['_pts']={};
+  done[tk][kidId]['_pts'][taskId] = pts;
+  // Recalc badge
+  let total=0; STATE.tasks.forEach(t=>{ total+=(done[tk][kidId][t.id]||0)*getTaskPts(done[tk][kidId], t.id, t.points); });
+  const badge = document.getElementById('pts-badge-'+kidId);
+  if(badge) { const lv=getEmoji(total); badge.textContent=lv.emoji+' '+total+'pts'; }
   await saveDone(done);
 }
 
@@ -2610,7 +2654,7 @@ function getWeekPtsForKid(kidId, tasks) {
   days.forEach(day => {
     const dayDone = (STATE.done[day]||{});
     const kidDone = dayDone[kidId]||{};
-    tasks.forEach(t=>{ total += (kidDone[t.id]||0)*t.points; });
+    tasks.forEach(t=>{ total += (kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
     const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
     total += (adj.bonus||0) - (adj.penalty||0);
@@ -2623,7 +2667,7 @@ function getTodayPtsForKid(kidId, tasks) {
   const dayDone = (STATE.done[tk]||{});
   const kidDone = dayDone[kidId]||{};
   let pts = 0;
-  tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+  tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
   ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ pts+=d.pts||0; });
   const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
   pts += (adj.bonus||0)-(adj.penalty||0);
@@ -2635,7 +2679,7 @@ function getAllTimePtsForKid(kidId, tasks) {
   Object.keys(STATE.done).forEach(day => {
     const dayDone = STATE.done[day];
     const kidDone = dayDone[kidId]||{};
-    tasks.forEach(t=>{ total+=(kidDone[t.id]||0)*t.points; });
+    tasks.forEach(t=>{ total+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
     const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
     total += (adj.bonus||0)-(adj.penalty||0);
@@ -2879,7 +2923,7 @@ async function handlePhotoUpload(kidId, input) {
 window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
-window.adjustTask=adjustTask; window.applyAdjustment=applyAdjustment; window.changePassword=changePassword; window.resetDay=resetDay;
+window.adjustTask=adjustTask; window.applyAdjustment=applyAdjustment; window.setCustomPts=setCustomPts; window.changePassword=changePassword; window.resetDay=resetDay;
 window.saveRefresh=saveRefresh; window.renderLevelsEditor=renderLevelsEditor;
 window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
