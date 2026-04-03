@@ -1764,10 +1764,12 @@ function renderKidsView() {
       let tappable='', hint='', tapHandler='', liStyle='';
 
       if(count > 0 && pendCount > 0) {
-        // ── APPROVED + another pending ──
+        // ── APPROVED + another pending — tap to undo the new suggestion ──
         checkClass='done'; checkContent=count;
         ptsText=`×${count} done · ⏳ +1 waiting`;
         liStyle='style="opacity:0.85"';
+        tappable='tappable'; hint='<span class="tap-hint" style="color:#FFA500">tap to undo</span>';
+        tapHandler=`onclick="unsuggestTask('${kid.id}','${t.id}',this)"`;
       } else if(count > 0) {
         // ── APPROVED — tap to suggest again ──
         checkClass='done'; checkContent=count;
@@ -2240,11 +2242,48 @@ document.addEventListener('click', e=>{
   }
 });
 
+// Each entry has a name + emoji so unnamed/generic levels get both filled in
 const LEVEL_NAME_POOL = [
   'Dreamer','Little Sprout','Energy Spark','Rising Star','On Fire!',
   'Super Achiever','Diamond Mind','Sky Rocket','Unstoppable','Legendary Star',
   'Shooting Star','Cosmic Hero','Galaxy Master','World Beater','Ultimate Legend',
 ];
+const LEVEL_FILL_POOL = [
+  { label:'Dreamer',         emoji:'🌙' },
+  { label:'Little Sprout',   emoji:'🌱' },
+  { label:'Energy Spark',    emoji:'⚡' },
+  { label:'Rising Star',     emoji:'🌟' },
+  { label:'On Fire!',        emoji:'🔥' },
+  { label:'Super Achiever',  emoji:'💪' },
+  { label:'Diamond Mind',    emoji:'💎' },
+  { label:'Sky Rocket',      emoji:'🚀' },
+  { label:'Unstoppable',     emoji:'🏅' },
+  { label:'Legendary Star',  emoji:'👑' },
+  { label:'Shooting Star',   emoji:'🌠' },
+  { label:'Cosmic Hero',     emoji:'🦸' },
+  { label:'Galaxy Master',   emoji:'🌌' },
+  { label:'World Beater',    emoji:'🏆' },
+  { label:'Ultimate Legend', emoji:'🎖️' },
+];
+
+// Fill in missing name/emoji for any level that has a generic placeholder
+async function autoFillLevels() {
+  const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
+  const usedLabels = new Set(levels.map(l=>l.label));
+  let changed = false;
+  levels.forEach((l, i) => {
+    const nameMissing = !l.label || /^Level \d+$/i.test(l.label);
+    const emojiMissing = !l.emoji || l.emoji === '🌟';
+    if(nameMissing || emojiMissing) {
+      // Find a fill entry not already used
+      const fill = LEVEL_FILL_POOL.find(f => !usedLabels.has(f.label)) || LEVEL_FILL_POOL[i % LEVEL_FILL_POOL.length];
+      if(nameMissing)  { l.label = fill.label; usedLabels.add(fill.label); }
+      if(emojiMissing) { l.emoji = fill.emoji; }
+      changed = true;
+    }
+  });
+  if(changed) await saveLevels(levels);
+}
 
 async function addLevel() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
@@ -2920,6 +2959,7 @@ async function init() {
   }
 
   STATE._ready = true;
+  await autoFillLevels(); // auto-name any unnamed levels
   document.getElementById('loading-screen').style.display='none';
   showView('kids');
   startListeners();
@@ -3013,6 +3053,16 @@ function triggerCelebration(level) {
   document.getElementById('levelup-sub').textContent = level.min+' points reached! 🎉';
   banner.classList.add('show');
   setTimeout(()=>banner.classList.remove('show'), 3500);
+
+  // Voice announcement
+  try {
+    const msg = new SpeechSynthesisUtterance(`Level up! You reached ${level.label}! Amazing job!`);
+    msg.rate = 0.9;
+    msg.pitch = 1.2;
+    msg.volume = 1;
+    // Delay slightly so it plays after the chime
+    setTimeout(() => speechSynthesis.speak(msg), 800);
+  } catch(e) {}
 }
 
 init();
