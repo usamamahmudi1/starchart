@@ -849,6 +849,44 @@
     box-shadow: 0 0 20px rgba(255,215,0,0.3);
   }
   .coin-counter-bubble.show { opacity: 1; }
+
+  /* ── Bonus / Penalty sections in Mark Done ── */
+  .bonus-penalty-wrap { display:flex; flex-direction:column; gap:0.75rem; margin-top:0.75rem; }
+  .bonus-box {
+    border-radius:12px; padding:0.85rem 1rem;
+    display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;
+  }
+  .bonus-box.positive {
+    background:rgba(46,204,113,0.08); border:1px solid rgba(46,204,113,0.25);
+  }
+  .bonus-box.negative {
+    background:rgba(231,76,60,0.08); border:1px solid rgba(231,76,60,0.2);
+  }
+  .bonus-box-icon { font-size:1.4rem; flex-shrink:0; }
+  .bonus-box-body { flex:1; min-width:120px; }
+  .bonus-box-title { font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.06em; margin-bottom:0.25rem; }
+  .bonus-box.positive .bonus-box-title { color:#2ecc71; }
+  .bonus-box.negative .bonus-box-title { color:#e74c3c; }
+  .bonus-box-sub { font-size:0.75rem; opacity:0.5; }
+  .bonus-controls { display:flex; align-items:center; gap:0.5rem; flex-shrink:0; }
+  .bonus-input {
+    width:64px; text-align:center; padding:0.35rem 0.4rem;
+    background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15);
+    border-radius:8px; color:white; font-family:'Nunito',sans-serif;
+    font-size:0.9rem; outline:none;
+  }
+  .bonus-input:focus { border-color:rgba(255,215,0,0.5); }
+  /* ── Wallet öre/kronor display ── */
+  .wallet-ore {
+    font-family:'Fredoka One',cursive; font-size:1.55rem;
+    background:linear-gradient(90deg,#FFD700,#FFA500);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+    transition:transform 0.2s;
+  }
+  .wallet-ore.bump { animation:wallet-bump 0.35s ease; }
+  .wallet-kronor { font-size:0.75rem; opacity:0.65; margin-top:1px; }
+  /* ── Kid mark card — task pts reduction hint ── */
+  .reduce-hint { font-size:0.7rem; opacity:0.45; margin-left:4px; }
 </style>
 </head>
 <body>
@@ -1352,6 +1390,8 @@ function renderKidsView() {
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
+    const kidAdjKV = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
+    pts = Math.max(0, pts + (kidAdjKV.bonus||0) - (kidAdjKV.penalty||0));
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
@@ -1409,8 +1449,8 @@ function renderKidsView() {
         <div class="wallet-icon">👛</div>
         <div class="wallet-body">
           <div class="wallet-label">Today's Wallet</div>
-          <div class="wallet-pts" id="wallet-pts-${kid.id}">${pts} coins</div>
-          <div class="wallet-streak">${pts===0?'Start earning!':pts+' points earned today'}</div>
+          <div class="wallet-ore" id="wallet-pts-${kid.id}">${pts*5} öre</div>
+          <div class="wallet-kronor" id="wallet-kronor-${kid.id}">${pts===0?'Start earning!':'= '+(pts*5/100).toFixed(2)+' kr'}</div>
         </div>
       </div>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
@@ -1457,6 +1497,8 @@ function renderMarkTab() {
     let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
+    const kidAdj2 = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
+    pts = Math.max(0, pts + (kidAdj2.bonus||0) - (kidAdj2.penalty||0));
     const col   = COLORS[kid.color]||COLORS.pink;
     const level = getEmoji(pts);
     const counters = tasks.map(t => {
@@ -1471,6 +1513,8 @@ function renderMarkTab() {
         </div>
       </div>`;
     }).join('');
+    // Load today's bonus/penalty for this kid
+    const kidAdj = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
     return `<div class="kid-mark-card">
       <div class="kid-mark-name">
         <span>${kid.emoji||'⭐'}</span>
@@ -1478,6 +1522,30 @@ function renderMarkTab() {
         <span style="margin-left:auto;font-size:0.9rem;opacity:0.7" id="pts-badge-${kid.id}">${level.emoji} ${pts}pts</span>
       </div>
       ${counters}
+      <div class="bonus-penalty-wrap">
+        <div class="bonus-box positive">
+          <div class="bonus-box-icon">🌟</div>
+          <div class="bonus-box-body">
+            <div class="bonus-box-title">Bonus Points</div>
+            <div class="bonus-box-sub">Something great they did!</div>
+          </div>
+          <div class="bonus-controls">
+            <input class="bonus-input" type="number" min="0" id="bonus-${kid.id}" value="${kidAdj.bonus||0}" placeholder="0">
+            <button class="btn btn-approve btn-sm" onclick="applyAdjustment('${kid.id}','bonus')">+ Add</button>
+          </div>
+        </div>
+        <div class="bonus-box negative">
+          <div class="bonus-box-icon">😕</div>
+          <div class="bonus-box-body">
+            <div class="bonus-box-title">Penalty Points</div>
+            <div class="bonus-box-sub">Deduct for bad behaviour</div>
+          </div>
+          <div class="bonus-controls">
+            <input class="bonus-input" type="number" min="0" id="penalty-${kid.id}" value="${kidAdj.penalty||0}" placeholder="0">
+            <button class="btn btn-reject btn-sm" onclick="applyAdjustment('${kid.id}','penalty')">− Deduct</button>
+          </div>
+        </div>
+      </div>
     </div>`;
   }).join('');
 }
@@ -1504,6 +1572,22 @@ async function adjustTask(kidId, taskId, delta, btn) {
     toast('Awesome! ⭐ +' + (t?t.points:0)+'pts');
   }
   await saveDone(done);
+}
+
+async function applyAdjustment(kidId, type) {
+  const inputEl = document.getElementById((type==='bonus'?'bonus':'penalty')+'-'+kidId);
+  const val = parseInt(inputEl ? inputEl.value : 0);
+  if(isNaN(val)||val<0){ toast('Enter a valid number'); return; }
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk].adjustments) done[tk].adjustments={};
+  if(!done[tk].adjustments[kidId]) done[tk].adjustments[kidId]={bonus:0,penalty:0};
+  done[tk].adjustments[kidId][type] = val;
+  await saveDone(done);
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  if(type==='bonus')   toast((kid?kid.emoji+' ':'')+'+'+val+' bonus pts added! 🌟');
+  else                 toast((kid?kid.emoji+' ':'')+'−'+val+' penalty applied 😕');
 }
 
 function renderTasksTab() {
@@ -1926,6 +2010,8 @@ function renderHistoryTab() {
       let pts=0; tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
       const kidDeeds = ((dayDone.xdeeds||{})[kid.id]||[]);
       kidDeeds.forEach(d=>{ pts+=d.pts||0; });
+      const kidAdjH = ((dayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
+      pts = Math.max(0, pts + (kidAdjH.bonus||0) - (kidAdjH.penalty||0));
       const lv=getEmoji(pts);
 
       // Task rows with editable counters
@@ -2064,68 +2150,72 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   if(_coinAnimating) return;
   _coinAnimating = true;
 
-  const walletEl = document.getElementById('wallet-'+kidId);
-  const walletPtsEl = document.getElementById('wallet-pts-'+kidId);
-  if(!walletEl || !walletPtsEl) { _coinAnimating=false; return; }
+  const walletEl    = document.getElementById('wallet-'+kidId);
+  const walletOreEl = document.getElementById('wallet-pts-'+kidId);
+  const walletKrEl  = document.getElementById('wallet-kronor-'+kidId);
+  if(!walletEl || !walletOreEl) { _coinAnimating=false; return; }
 
-  // Show "+N coins" bubble at top centre for 2 seconds
+  const gainedOre = gained * 5;
+  const finalOre  = finalPts * 5;
+
+  // ── Step 1: Show bubble for 2 seconds so kid reads how much is coming ──
   const bubble = document.getElementById('coin-bubble');
-  bubble.textContent = '+'+gained+' coin'+(gained>1?'s':'')+'! 🪙';
-  // Position bubble near top of screen, centred
+  bubble.textContent = '+' + gainedOre + ' öre! 🪙';
   bubble.style.top = '80px';
   bubble.style.left = '50%';
   bubble.style.transform = 'translateX(-50%)';
   bubble.classList.add('show');
 
-  await sleep(2000); // wait so user reads how many points incoming
-
+  await sleep(2000);
   bubble.classList.remove('show');
-  await sleep(300);
+  await sleep(250);
 
-  // Get wallet position (target)
+  // ── Step 2: Launch ALL coins simultaneously in a burst ──
   const walletRect = walletEl.getBoundingClientRect();
-  const targetX = walletRect.left + walletRect.width * 0.15;
+  const targetX = walletRect.left + walletRect.width  * 0.18;
   const targetY = walletRect.top  + walletRect.height * 0.5;
 
-  // Fire coins one by one (max 20 individual coins, then batch)
-  const coinCount = Math.min(gained, 20);
-  const batchSize = gained > 20 ? Math.ceil(gained/20) : 1; // pts per coin if batching
-  let prevPts = finalPts - gained;
+  // Scale coin count to earned öre (5–30 coins for visual density)
+  const coinCount = Math.min(30, Math.max(5, Math.round(gainedOre / 3)));
 
+  // Launch all coins at once with staggered start (0–200ms)
+  const coinPromises = [];
   for(let i=0; i<coinCount; i++) {
-    // Start coin from random spot near top of screen
-    const startX = window.innerWidth * (0.2 + Math.random()*0.6);
-    const startY = 40 + Math.random()*60;
-    await flyOneCoin(startX, startY, targetX, targetY);
-    // Update wallet count as each coin lands
-    prevPts += batchSize;
-    const displayPts = Math.min(prevPts, finalPts);
-    if(walletPtsEl) {
-      walletPtsEl.textContent = displayPts + ' coins';
-      walletPtsEl.classList.remove('bump');
-      void walletPtsEl.offsetWidth; // reflow
-      walletPtsEl.classList.add('bump');
-    }
-    // Small sound for each coin landing
-    playCoinSound();
-    if(i < coinCount-1) await sleep(gained > 10 ? 80 : 150);
+    const startX = window.innerWidth  * (0.15 + Math.random()*0.7);
+    const startY = window.innerHeight * (0.05 + Math.random()*0.25);
+    const delay  = Math.random() * 200;
+    coinPromises.push(flyOneCoin(startX, startY, targetX, targetY, delay));
   }
 
-  // Final correct value
-  if(walletPtsEl) walletPtsEl.textContent = finalPts + ' coins';
+  // ── Step 3: Rich multi-coin cascade sound ──
+  playRichCoinSound(coinCount);
+
+  // Wait for all coins to land
+  await Promise.all(coinPromises);
+
+  // ── Step 4: Update wallet with bump animation ──
+  walletOreEl.textContent = finalOre + ' öre';
+  walletOreEl.classList.remove('bump');
+  void walletOreEl.offsetWidth;
+  walletOreEl.classList.add('bump');
+  if(walletKrEl) walletKrEl.textContent = '= '+(finalOre/100).toFixed(2)+' kr';
+
   _coinAnimating = false;
 }
 
-function flyOneCoin(x0, y0, x1, y1) {
+function flyOneCoin(x0, y0, x1, y1, delay=0) {
   return new Promise(resolve => {
     const coin = document.createElement('div');
     coin.className = 'fly-coin';
     coin.textContent = '🪙';
     coin.style.left = x0 + 'px';
     coin.style.top  = y0 + 'px';
+    coin.style.opacity = '0';
     document.body.appendChild(coin);
 
-    const dur   = 550 + Math.random()*200; // ms
+    setTimeout(()=>{
+    coin.style.opacity = '1';
+    const dur   = 500 + Math.random()*300; // ms
     const start = performance.now();
     // Bezier control point (arc up then down to wallet)
     const cx = (x0+x1)/2 + (Math.random()-0.5)*120;
@@ -2159,21 +2249,43 @@ function flyOneCoin(x0, y0, x1, y1) {
       else { coin.remove(); resolve(); }
     }
     requestAnimationFrame(frame);
+    }, delay);
   });
 }
 
 function playCoinSound() {
+  playRichCoinSound(1);
+}
+
+function playRichCoinSound(count) {
   try {
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain); gain.connect(ctx.destination);
-    osc.frequency.value = 880 + Math.random()*220; // high ping
-    osc.type = 'sine';
-    const t = ctx.currentTime;
-    gain.gain.setValueAtTime(0.18, t);
-    gain.gain.exponentialRampToValueAtTime(0.001, t+0.18);
-    osc.start(t); osc.stop(t+0.2);
+    // Fire multiple staggered coin pings over 0.6s
+    const pingCount = Math.min(count, 18);
+    for(let i=0; i<pingCount; i++) {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      // Optional shimmer — subtle reverb via second osc
+      const osc2  = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc.connect(gain);   gain.connect(ctx.destination);
+      osc2.connect(gain2); gain2.connect(ctx.destination);
+      // Each coin ping: slightly different pitch, random spread over 600ms
+      const freq  = 700 + Math.random()*500;
+      const tOff  = ctx.currentTime + (i / pingCount) * 0.65 + Math.random()*0.08;
+      osc.frequency.value  = freq;
+      osc2.frequency.value = freq * 2.01; // slight harmonic shimmer
+      osc.type  = 'sine';
+      osc2.type = 'sine';
+      gain.gain.setValueAtTime(0, tOff);
+      gain.gain.linearRampToValueAtTime(0.22, tOff+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, tOff+0.28);
+      gain2.gain.setValueAtTime(0, tOff);
+      gain2.gain.linearRampToValueAtTime(0.06, tOff+0.02);
+      gain2.gain.exponentialRampToValueAtTime(0.001, tOff+0.18);
+      osc.start(tOff);  osc.stop(tOff+0.3);
+      osc2.start(tOff); osc2.stop(tOff+0.2);
+    }
   } catch(e){}
 }
 
@@ -2304,7 +2416,7 @@ init();
 window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
-window.adjustTask=adjustTask; window.changePassword=changePassword; window.resetDay=resetDay;
+window.adjustTask=adjustTask; window.applyAdjustment=applyAdjustment; window.changePassword=changePassword; window.resetDay=resetDay;
 window.saveRefresh=saveRefresh; window.renderLevelsEditor=renderLevelsEditor;
 window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
