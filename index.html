@@ -236,6 +236,28 @@
   }
   .kid-level-inline > span:first-child { font-size: 1.5rem; line-height: 1; }
   .kid-level-label-sm { font-size: 1.1rem; opacity: 1; font-weight: 800; letter-spacing: 0.01em; }
+  /* Level banner — big centrepiece */
+  .kid-level-banner {
+    text-align: center;
+    padding: 0.6rem 0 0.5rem;
+    margin: 0.25rem 0 0.6rem;
+  }
+  .kid-level-banner-emoji {
+    font-size: 3.8rem; line-height: 1;
+    display: block;
+    filter: drop-shadow(0 0 12px rgba(255,215,0,0.5));
+    animation: bounce 1.4s ease-in-out infinite;
+  }
+  .kid-level-banner-label {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.7rem; line-height: 1.1;
+    margin-top: 0.25rem;
+    background: linear-gradient(90deg, #FFD700, #FF6B9D, #FFD700);
+    background-size: 200%;
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    animation: shimmer 3s linear infinite;
+    display: block;
+  }
   .kid-pts-inline { display: flex; align-items: baseline; gap: 0.3rem; flex-wrap: wrap; }
   .kid-pts-num {
     font-family: 'Fredoka One', cursive; font-size: 2rem; line-height: 1;
@@ -1625,15 +1647,16 @@ function renderKidsView() {
         </div>
         <div class="kid-top-info">
           <div class="kid-name" style="color:${col.main};text-align:left;margin-bottom:0">${escHtml(kid.name)}</div>
-          <div class="kid-level-inline">
-            <span>${level.emoji}</span><span class="kid-level-label-sm">${level.label}</span>
-          </div>
           <div class="kid-pts-inline">
             <span class="kid-pts-num">${pts}</span>
             <span class="kid-pts-unit">pts today</span>
             ${stars?`<span style="font-size:0.8rem;margin-left:2px">${stars}</span>`:''}
           </div>
         </div>
+      </div>
+      <div class="kid-level-banner">
+        <span class="kid-level-banner-emoji">${level.emoji}</span>
+        <span class="kid-level-banner-label">${level.label}</span>
       </div>
       ${(()=>{
         const _wp  = getAllTimePtsForKid(kid.id, tasks);
