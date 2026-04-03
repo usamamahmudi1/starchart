@@ -826,6 +826,25 @@
   }
   .custom-deed-input:focus { border-color:rgba(255,215,0,0.8); }
   .custom-deed-input::placeholder { opacity:0.4; }
+  .deed-input-wrap { position: relative; margin-top: 0.5rem; }
+  .deed-input-wrap .custom-deed-input { margin-top: 0; width: 100%; padding-right: 2.8rem; }
+  .voice-btn {
+    position: absolute; right: 0.45rem; top: 50%; transform: translateY(-50%);
+    width: 30px; height: 30px; border-radius: 50%;
+    background: rgba(255,215,0,0.12); border: 1px solid rgba(255,215,0,0.3);
+    color: white; font-size: 0.88rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.2s; flex-shrink: 0;
+  }
+  .voice-btn:hover { background: rgba(255,215,0,0.26); }
+  .voice-btn.listening {
+    background: rgba(231,76,60,0.3); border-color: rgba(231,76,60,0.65);
+    animation: mic-pulse 0.85s ease-in-out infinite;
+  }
+  @keyframes mic-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(231,76,60,0.45); }
+    50%      { box-shadow: 0 0 0 7px rgba(231,76,60,0); }
+  }
   .suggest-task-scroll {
     overflow-y:auto; max-height:50vh; padding-right:4px; margin-bottom:0;
   }
@@ -2308,6 +2327,38 @@ async function unsuggestTask(kidId, taskId, el) {
 }
 
 // ── "Something not on the list?" modal — custom deed only ──
+// ── Voice input (Web Speech API — free, browser-native) ──────────
+let _recognition = null;
+
+function startVoiceInput() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) { toast('Voice input not supported on this browser 😕'); return; }
+  const btn = document.getElementById('voice-btn');
+  // If already listening, stop
+  if(_recognition) { _recognition.stop(); return; }
+  _recognition = new SR();
+  _recognition.lang = 'en-US';
+  _recognition.interimResults = false;
+  _recognition.maxAlternatives = 1;
+  if(btn) { btn.classList.add('listening'); btn.textContent = '⏹'; }
+  toast('Listening… speak now 🎤');
+  _recognition.onresult = (e) => {
+    const text = e.results[0][0].transcript;
+    const inp = document.getElementById('custom-deed-input');
+    if(inp) { inp.value = text; inp.focus(); }
+    toast('Got it! ✓');
+  };
+  _recognition.onerror = (e) => {
+    const msg = e.error === 'not-allowed' ? 'Microphone access denied 🎤' : "Couldn't hear that — try again!";
+    toast(msg);
+  };
+  _recognition.onend = () => {
+    _recognition = null;
+    if(btn) { btn.classList.remove('listening'); btn.textContent = '🎤'; }
+  };
+  _recognition.start();
+}
+
 function openDeedModal(kidId) {
   suggestKidId = kidId;
   const kid = STATE.kids.find(k=>k.id===kidId);
@@ -3147,7 +3198,7 @@ window.toggleEmojiPicker=toggleEmojiPicker; window.pickEmoji=pickEmoji;
 window.pickCustomEmoji=pickCustomEmoji; window.addLevel=addLevel;
 window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor;
 window.resetLevels=resetLevels;
-window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
+window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask; window.startVoiceInput=startVoiceInput;
 window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
 window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePhotoUpload;
 window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab; window.toggleKhDay=toggleKhDay;
@@ -3162,7 +3213,12 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
   <div class="suggest-modal" style="max-height:unset">
     <div class="suggest-modal-title" id="suggest-modal-kid-name">Something new! ✨</div>
     <div class="suggest-modal-sub">Tell your parent about something great you did that's not on the task list!</div>
-    <input class="custom-deed-input" id="custom-deed-input" placeholder="e.g. I helped set the table..." style="margin-top:0.5rem">
+    <div class="deed-input-wrap">
+      <input class="custom-deed-input" id="custom-deed-input"
+        placeholder="e.g. I helped set the table..."
+        spellcheck="true" autocorrect="on" autocapitalize="sentences">
+      <button class="voice-btn" id="voice-btn" onclick="startVoiceInput()" title="Tap to speak">🎤</button>
+    </div>
     <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-shrink:0">
       <button class="btn btn-gold" style="flex:1" onclick="submitSuggestions()">✋ Tell Parent!</button>
       <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeSuggestModal()">Cancel</button>
