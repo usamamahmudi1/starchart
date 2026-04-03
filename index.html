@@ -2778,6 +2778,7 @@ function openCardDetail(kidId) {
   const weekOre  = (allPts  * ORE_PER_PT).toFixed(1);
   const weekKr   = Math.round(allPts  * KR_PER_PT);
   const todayOre = (todayPts * ORE_PER_PT).toFixed(1);
+  const todayKr  = Math.round(todayPts * KR_PER_PT);
   const spendList = getSpendingForKid(kidId).slice().reverse();
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
   const remClass = remaining < 0 ? 'red' : 'teal';
@@ -2803,8 +2804,9 @@ function openCardDetail(kidId) {
       <div class="cd-bal-grid">
         <div class="cd-bal-box"><div class="cd-bal-amount">${weekOre} öre</div><div class="cd-bal-label">All-time · öre</div></div>
         <div class="cd-bal-box"><div class="cd-bal-amount">${weekKr} kr</div><div class="cd-bal-label">All-time · kr</div></div>
-        <div class="cd-bal-box"><div class="cd-bal-amount">${todayOre} öre</div><div class="cd-bal-label">Today</div></div>
-        <div class="cd-bal-box"><div class="cd-bal-amount ${remClass}">${Math.round(remaining)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${todayOre} öre</div><div class="cd-bal-label">Today · öre</div></div>
+        <div class="cd-bal-box"><div class="cd-bal-amount">${todayKr} kr</div><div class="cd-bal-label">Today · kr</div></div>
+        <div class="cd-bal-box" style="grid-column:1/-1"><div class="cd-bal-amount ${remClass}">${Math.round(remaining)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
       </div>
     </div>
     <div class="cd-section">
