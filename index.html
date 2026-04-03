@@ -207,6 +207,93 @@
   }
   .star-icon { font-size: 1.2rem; }
 
+  /* Kids history button */
+  .kids-history-btn {
+    margin-top: 0.6rem;
+    padding: 0.45rem 1.1rem;
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 999px; color: white;
+    font-family: 'Nunito', sans-serif; font-size: 0.85rem; font-weight: 700;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .kids-history-btn:hover { background: rgba(255,255,255,0.16); }
+
+  /* Kids history modal */
+  .kh-overlay {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(0,0,0,0.65); backdrop-filter: blur(8px);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .kh-sheet {
+    background: linear-gradient(180deg, #0d0b2e 0%, #1a1740 100%);
+    border: 1px solid rgba(255,255,255,0.12); border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    width: 100%; max-width: 520px;
+    max-height: 88vh; display: flex; flex-direction: column;
+    animation: sheet-up 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .kh-handle-bar {
+    flex-shrink: 0; padding: 1rem 1.5rem 0;
+  }
+  .kh-handle {
+    width: 40px; height: 4px;
+    background: rgba(255,255,255,0.2); border-radius: 999px; margin: 0 auto 1rem;
+  }
+  .kh-title {
+    font-family: 'Fredoka One', cursive; font-size: 1.35rem;
+    color: #FFD700; margin-bottom: 0.75rem;
+  }
+  /* Kid tab pills */
+  .kh-tabs {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;
+  }
+  .kh-tab {
+    padding: 0.35rem 0.9rem; border-radius: 999px;
+    border: 1px solid rgba(255,255,255,0.18);
+    background: transparent; color: rgba(255,255,255,0.6);
+    font-family: 'Nunito', sans-serif; font-size: 0.82rem; font-weight: 700;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .kh-tab.active { color: #1a1a2e; border-color: transparent; }
+  /* Scrollable body */
+  .kh-body {
+    flex: 1; overflow-y: auto; padding: 0 1.5rem 1.5rem;
+  }
+  .kh-body::-webkit-scrollbar { width: 4px; }
+  .kh-body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 2px; }
+  /* Day entry */
+  .kh-day { margin-bottom: 1rem; }
+  .kh-day-header {
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px; padding: 0.6rem 0.85rem; margin-bottom: 0.35rem;
+  }
+  .kh-day-date { font-weight: 800; font-size: 0.88rem; }
+  .kh-day-pts {
+    font-family: 'Fredoka One', cursive; font-size: 1.1rem;
+    background: linear-gradient(90deg,#FFD700,#FF9500);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .kh-task-row {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.3rem 0.85rem; font-size: 0.82rem;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .kh-task-row:last-child { border-bottom: none; }
+  .kh-task-icon { font-size: 0.75rem; opacity: 0.5; flex-shrink: 0; }
+  .kh-task-name { flex: 1; opacity: 0.8; }
+  .kh-task-pts { color: #FFD700; font-weight: 700; font-size: 0.78rem; flex-shrink: 0; }
+  .kh-empty { text-align: center; opacity: 0.4; font-size: 0.9rem; padding: 2rem 0; }
+  .kh-close-btn {
+    flex-shrink: 0; margin: 0 1.5rem 1.5rem;
+    padding: 0.75rem; background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.15); border-radius: 14px;
+    color: white; font-family: 'Nunito', sans-serif; font-size: 0.95rem; font-weight: 700;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .kh-close-btn:hover { background: rgba(255,255,255,0.12); }
+
   /* ── Compact kid card top row ── */
   .kid-top-row {
     display: flex; align-items: center; gap: 0.85rem; margin-bottom: 0.75rem;
@@ -1122,6 +1209,7 @@
   <div class="kids-header">
     <div class="kids-title">✨ Star Chart ✨</div>
     <div class="kids-date" id="kids-date"></div>
+    <button class="kids-history-btn" onclick="openKidsHistory()">📅 My History</button>
   </div>
   <div class="kids-grid" id="kids-grid"></div>
   <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
@@ -1460,8 +1548,13 @@ function renderApprovalsTab() {
       if(!task) return '';
       return `<div class="approval-task-row">
         <span class="approval-task-name">${escHtml(task.name)}</span>
-        <span class="approval-task-pts">×${count} = +${task.points*count}pts</span>
-        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count})">✓ Approve</button>
+        <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
+          <input class="pts-override-input" type="number" min="0" max="${task.points}"
+            id="tappr-pts-${kid.id}-${task.id}" value="${task.points}"
+            title="Pts per completion">
+          <span style="font-size:0.62rem;opacity:0.4">/ ${task.points} pts</span>
+        </div>
+        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count},'ap')">✓ Approve</button>
         <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
       </div>`;
     }).join('');
@@ -1534,6 +1627,7 @@ function showLogin() {
   document.getElementById('login-pw').value='';
   document.getElementById('login-err').textContent='';
   showView('login');
+  setTimeout(()=>document.getElementById('login-pw').focus(), 80);
 }
 function doLogin() {
   const pw = document.getElementById('login-pw').value;
@@ -1749,7 +1843,13 @@ function renderMarkTab() {
           <div class="approval-name">${escHtml(kid.name)}</div>
           <div class="approval-task">${escHtml(task.name)} × ${count}</div>
         </div>
-        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count})">✓ Approve</button>
+        <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
+          <input class="pts-override-input" type="number" min="0" max="${task.points}"
+            id="mkappr-pts-${kid.id}-${task.id}" value="${task.points}"
+            title="Pts per completion">
+          <span style="font-size:0.62rem;opacity:0.4">pts</span>
+        </div>
+        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count},'mk')">✓ Approve</button>
         <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
       </div>`);
     });
@@ -2215,20 +2315,27 @@ async function submitSuggestions() {
   toast((kid?kid.emoji+' ':'')+'Sent to parent! ⏳');
 }
 
-async function approveTask(kidId, taskId, count) {
-  // Add to done
+async function approveTask(kidId, taskId, count, src) {
+  const task = STATE.tasks.find(t=>t.id===taskId);
+  // Read pts override from whichever input is in the DOM
+  const prefix = src==='mk' ? 'mkappr-pts-' : 'tappr-pts-';
+  const inp = document.getElementById(prefix+kidId+'-'+taskId);
+  const customPts = inp ? Math.max(0, parseInt(inp.value)||0) : (task?task.points:0);
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]) done[tk]={};
   if(!done[tk][kidId]) done[tk][kidId]={};
   done[tk][kidId][taskId] = (done[tk][kidId][taskId]||0) + count;
-  // Remove from pending
+  // Store pts override if different from task default
+  if(task && customPts !== task.points) {
+    if(!done[tk][kidId]['_pts']) done[tk][kidId]['_pts']={};
+    done[tk][kidId]['_pts'][taskId] = customPts;
+  }
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(pending[kidId]) { delete pending[kidId][taskId]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
   await Promise.all([saveDone(done), savePending(pending)]);
-  const task = STATE.tasks.find(t=>t.id===taskId);
-  const kid  = STATE.kids.find(k=>k.id===kidId);
-  toast('✓ Approved! '+(kid?kid.emoji:'')+(task?' +'+task.points*count+'pts':''));
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  toast('✓ Approved! '+(kid?kid.emoji:'')+' +'+customPts*count+'pts');
 }
 
 async function rejectTask(kidId, taskId) {
@@ -2835,6 +2942,102 @@ function triggerCelebration(level) {
 init();
 
 // Make functions available globally (needed for onclick handlers in HTML)
+// ── Kids history modal ──────────────────────────────────────────
+let _khKidId = null;
+
+function openKidsHistory(kidId) {
+  const { kids, tasks } = getData();
+  if(!kids.length) return;
+  _khKidId = kidId || kids[0].id;
+  const overlay = document.getElementById('kh-overlay');
+  overlay.style.display = 'flex';
+  _renderKidsHistory();
+}
+
+function switchKidsHistoryTab(kidId) {
+  _khKidId = kidId;
+  _renderKidsHistory();
+}
+
+function closeKidsHistory() {
+  document.getElementById('kh-overlay').style.display = 'none';
+}
+
+function _renderKidsHistory() {
+  const { kids, tasks } = getData();
+  const kid = kids.find(k=>k.id===_khKidId) || kids[0];
+  if(!kid) return;
+  const col = COLORS[kid.color]||COLORS.pink;
+
+  // Tab pills
+  const tabsHtml = kids.map(k => {
+    const c = COLORS[k.color]||COLORS.pink;
+    const active = k.id===kid.id;
+    return `<button class="kh-tab${active?' active':''}"
+      style="${active?`background:${c.main};`:'color:rgba(255,255,255,0.6)'}"
+      onclick="switchKidsHistoryTab('${k.id}')">
+      ${k.photo?`<img src="${k.photo}" style="width:18px;height:18px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:4px">`:''}${k.emoji&&!k.photo?k.emoji+' ':''}${escHtml(k.name)}
+    </button>`;
+  }).join('');
+
+  // Collect days with data for this kid, most recent first
+  const days = Object.keys(STATE.done).sort((a,b)=>b.localeCompare(a));
+  const dayRows = days.map(day => {
+    const dayDone = STATE.done[day];
+    const kidDone = dayDone[kid.id]||{};
+    let dayPts = 0;
+    const taskLines = [];
+    tasks.forEach(t => {
+      const count = kidDone[t.id]||0;
+      if(!count) return;
+      const unitPts = getTaskPts(kidDone, t.id, t.points);
+      const earned = count * unitPts;
+      dayPts += earned;
+      taskLines.push(`<div class="kh-task-row">
+        <span class="kh-task-icon">✓</span>
+        <span class="kh-task-name">${escHtml(t.name)}${count>1?' ×'+count:''}</span>
+        <span class="kh-task-pts">+${earned} pts</span>
+      </div>`);
+    });
+    const deeds = ((dayDone.xdeeds||{})[kid.id]||[]);
+    deeds.forEach(d => {
+      dayPts += d.pts||0;
+      taskLines.push(`<div class="kh-task-row">
+        <span class="kh-task-icon">✨</span>
+        <span class="kh-task-name">${escHtml(d.desc||'Good deed')}</span>
+        <span class="kh-task-pts">+${d.pts||0} pts</span>
+      </div>`);
+    });
+    const adj = ((dayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
+    if(adj.bonus)   { dayPts+=adj.bonus;   taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">🎁</span><span class="kh-task-name">Bonus</span><span class="kh-task-pts" style="color:#2ecc71">+${adj.bonus} pts</span></div>`); }
+    if(adj.penalty) { dayPts-=adj.penalty; taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">📉</span><span class="kh-task-name">Penalty</span><span class="kh-task-pts" style="color:#e74c3c">−${adj.penalty} pts</span></div>`); }
+    if(!taskLines.length) return '';
+    const label = day === todayKey() ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
+    return `<div class="kh-day">
+      <div class="kh-day-header">
+        <span class="kh-day-date">📅 ${label}</span>
+        <span class="kh-day-pts">${dayPts} pts</span>
+      </div>
+      <div style="background:rgba(255,255,255,0.03);border-radius:0 0 10px 10px;border:1px solid rgba(255,255,255,0.06);border-top:none">
+        ${taskLines.join('')}
+      </div>
+    </div>`;
+  }).filter(Boolean).join('');
+
+  document.getElementById('kh-overlay').innerHTML = `
+    <div class="kh-sheet" onclick="event.stopPropagation()">
+      <div class="kh-handle-bar">
+        <div class="kh-handle"></div>
+        <div class="kh-title">📅 My Points History</div>
+        <div class="kh-tabs">${tabsHtml}</div>
+      </div>
+      <div class="kh-body">
+        ${dayRows || '<div class="kh-empty">No points earned yet — keep going! 🌟</div>'}
+      </div>
+      <button class="kh-close-btn" onclick="closeKidsHistory()">Close</button>
+    </div>`;
+}
+
 function openCardDetail(kidId) {
   const { kids, tasks } = getData();
   const kid = kids.find(k => k.id === kidId);
@@ -2932,6 +3135,7 @@ window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
 window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
 window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePhotoUpload;
+window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
@@ -2984,6 +3188,9 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
 
 <!-- Card Detail Modal -->
 <div class="card-detail-overlay" id="card-detail-overlay" style="display:none" onclick="closeCardDetail()"></div>
+
+<!-- Kids History Modal -->
+<div class="kh-overlay" id="kh-overlay" style="display:none" onclick="closeKidsHistory()"></div>
 
 <!-- Coin counter bubble -->
 <div class="coin-counter-bubble" id="coin-bubble"></div>
