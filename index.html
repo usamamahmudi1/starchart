@@ -780,15 +780,35 @@
   .levelup-text { font-family:'Fredoka One',cursive; font-size:1.8rem; color:#FFD700; }
   .levelup-sub { font-size:1rem; opacity:0.7; margin-top:0.25rem; }
 
-  /* ══ BIG WALLET CARD ══ */
+  /* ══ BANK CARD ══ */
   .wallet-card {
     margin: 1rem 0 0;
-    background: linear-gradient(145deg, #1c1445 0%, #2a1a5e 45%, #1c1445 100%);
-    border: 1.5px solid rgba(255,215,0,0.45);
+    background: linear-gradient(135deg, #0f2027 0%, #203a43 45%, #2c5364 100%);
+    border: 1px solid rgba(255,255,255,0.12);
     border-radius: 20px;
-    padding: 1.1rem 1.1rem 1rem;
+    padding: 1.15rem 1.15rem 1rem;
     position: relative; overflow: hidden;
-    box-shadow: 0 4px 28px rgba(255,165,0,0.18), inset 0 1px 0 rgba(255,255,255,0.06);
+    box-shadow: 0 8px 32px rgba(0,0,0,0.45), 0 2px 8px rgba(0,0,0,0.3),
+                inset 0 1px 0 rgba(255,255,255,0.08);
+    /* Embossed edge */
+    outline: 1px solid rgba(0,0,0,0.3);
+  }
+  /* EMV chip graphic */
+  .bank-chip {
+    width: 32px; height: 24px;
+    background: linear-gradient(135deg, #C8A84B 0%, #F5D78E 40%, #C8A84B 60%, #A07830 100%);
+    border-radius: 5px; flex-shrink:0;
+    display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr;
+    gap:1px; padding:3px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+  }
+  .bank-chip-cell {
+    background: linear-gradient(135deg, #E8C060, #B08030);
+    border-radius: 2px;
+  }
+  /* Contactless icon */
+  .bank-contactless {
+    font-size: 1.1rem; opacity:0.6; flex-shrink:0;
   }
   /* Sheen stripe */
   .wallet-card::before {
@@ -852,6 +872,46 @@
     animation: pip-pop 0.3s cubic-bezier(0.34,1.56,0.64,1) both;
   }
   @keyframes pip-pop { from{transform:scale(0);opacity:0} to{transform:scale(1);opacity:1} }
+  /* ── Bank card spending section ── */
+  .bank-divider {
+    height:1px; background:rgba(255,255,255,0.1); margin:0.85rem 0;
+  }
+  .bank-section-label {
+    font-size:0.62rem; text-transform:uppercase; letter-spacing:0.08em;
+    opacity:0.4; margin-bottom:0.5rem;
+  }
+  .spend-row {
+    display:flex; align-items:center; gap:0.6rem;
+    font-size:0.82rem; padding:0.3rem 0;
+    border-bottom:1px solid rgba(255,255,255,0.05);
+  }
+  .spend-row:last-child { border-bottom:none; }
+  .spend-row-date { opacity:0.4; font-size:0.7rem; flex-shrink:0; }
+  .spend-row-desc { flex:1; }
+  .spend-row-amt  { color:#FF6B6B; font-weight:700; flex-shrink:0; }
+  .spend-add-row  {
+    display:flex; gap:0.4rem; margin-top:0.6rem; flex-wrap:wrap;
+  }
+  .spend-input {
+    flex:1; min-width:80px; padding:0.35rem 0.5rem;
+    background:rgba(255,255,255,0.07); border:1px solid rgba(255,255,255,0.15);
+    border-radius:8px; color:white; font-family:'Nunito',sans-serif;
+    font-size:0.8rem; outline:none;
+  }
+  .spend-input:focus { border-color:rgba(255,100,100,0.5); }
+  .bank-balance-row {
+    display:flex; justify-content:space-between; align-items:baseline;
+    margin-top:0.5rem; padding-top:0.5rem;
+    border-top:1px solid rgba(255,255,255,0.1);
+  }
+  .bank-balance-label { font-size:0.68rem; opacity:0.5; text-transform:uppercase; letter-spacing:0.06em; }
+  .bank-balance-val {
+    font-family:'Fredoka One',cursive; font-size:1.3rem;
+    background:linear-gradient(90deg,#4ECDC4,#44CF8E);
+    -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  }
+  .bank-balance-val.negative { background:linear-gradient(90deg,#FF6B6B,#FF4444); }
+
   /* Flying coin */
   .fly-coin {
     position: fixed; z-index: 500; pointer-events: none;
@@ -1163,7 +1223,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{} };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{} };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1299,7 +1359,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending'];
+  const docs = ['kids','tasks','done','settings','pending','spending'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -1312,7 +1372,8 @@ function startListeners() {
         STATE.pw     = data.pw     || DEFAULT_PW;
         STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
       }
-      if(docId === 'pending')  { STATE.pending = data.requests || {}; }
+      if(docId === 'pending')  { STATE.pending  = data.requests || {}; }
+      if(docId === 'spending') { STATE.spending = data.records  || {}; }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -1330,6 +1391,7 @@ async function saveDone(done)    { STATE.done=done;   await fbSet('done',    { d
 async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ pw, levels: STATE.levels }); }
 async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls }); }
 async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
+async function saveSpending(s)    { STATE.spending=s;   await fbSet('spending', { records: s }); }
 
 function getData()  { return STATE; }
 function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels : DEFAULT_EMOJI_LEVELS; }
@@ -1474,31 +1536,64 @@ function renderKidsView() {
       <div class="kid-points-label">points today</div>
       ${stars?`<div class="stars-row">${stars.split('').map(s=>`<span class="star-icon">${s}</span>`).join('')}</div>`:''}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:1rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.85rem;text-align:center;margin-top:1rem">No tasks yet!</div>'}
-      <div class="wallet-card" id="wallet-${kid.id}">
-        <div class="wallet-header">
-          <div class="wallet-icon-big">👛</div>
-          <div class="wallet-title-block">
-            <div class="wallet-title">Today's Wallet</div>
-            <div class="wallet-subtitle">1 pt = 4.29 öre · 100 öre = 1 kr</div>
+      <div class="wallet-card" id="wallet-${(()=>{
+        const weekPts = getWeekPtsForKid(kid.id, tasks);
+        const todayPts2 = getTodayPtsForKid(kid.id, tasks);
+        const weekOre = (weekPts * ORE_PER_PT).toFixed(1);
+        const weekKr  = (weekPts * KR_PER_PT).toFixed(3);
+        const todayOre = (todayPts2 * ORE_PER_PT).toFixed(1);
+        const spent  = totalSpentKid(kid.id);
+        const remaining = Math.max(0, weekPts*KR_PER_PT - spent);
+        const spendList = getSpendingForKid(kid.id).slice(-3).reverse();
+        const wr = getCurrentWeekRange();
+        const pipCount = Math.min(weekPts, 24);
+        return kid.id;
+      })()}">
+        <!-- Card top row: chip + contactless + card label -->
+        <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.9rem">
+          <div class="bank-chip"><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div></div>
+          <div style="flex:1">
+            <div style="font-family:'Fredoka One',cursive;font-size:0.95rem;color:rgba(255,255,255,0.9);letter-spacing:0.04em">${escHtml(kid.name)}'s Bank Card</div>
+            <div style="font-size:0.62rem;opacity:0.4;letter-spacing:0.06em;margin-top:1px">1 pt = 4.29 öre · 100 öre = 1 kr</div>
           </div>
+          <div class="bank-contactless">📶</div>
         </div>
+        <!-- Two currency rows -->
         <div class="wallet-rows">
           <div class="wallet-row">
             <div class="wallet-row-icon">🪙</div>
             <div class="wallet-row-body">
-              <div class="wallet-row-label">Öre earned</div>
-              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${(pts*4.2857).toFixed(1)} öre</div>
+              <div class="wallet-row-label">This week · öre</div>
+              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${(()=>{const w=getWeekPtsForKid(kid.id,tasks);return(w*ORE_PER_PT).toFixed(1);})()} öre</div>
+            </div>
+            <div style="text-align:right;flex-shrink:0">
+              <div class="wallet-row-label">Today</div>
+              <div style="font-size:0.8rem;opacity:0.7;font-family:'Fredoka One',cursive;color:#FFD700" id="wallet-today-${kid.id}">${(getTodayPtsForKid(kid.id,tasks)*ORE_PER_PT).toFixed(1)} öre</div>
             </div>
           </div>
           <div class="wallet-row">
             <div class="wallet-row-icon">💰</div>
             <div class="wallet-row-body">
-              <div class="wallet-row-label">Kronor total</div>
-              <div class="wallet-row-value kr" id="wallet-kronor-${kid.id}">${pts===0?'0.00 kr':((pts*0.042857).toFixed(3))+' kr'}</div>
+              <div class="wallet-row-label">This week · kr</div>
+              <div class="wallet-row-value kr" id="wallet-kronor-${kid.id}">${(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT).toFixed(3)} kr</div>
             </div>
           </div>
         </div>
-        <div class="wallet-coin-row" id="wallet-pips-${kid.id}">${'🪙'.repeat(Math.min(pts,20))}</div>
+        <!-- Pip row -->
+        <div class="wallet-coin-row" id="wallet-pips-${kid.id}">${Array.from({length:Math.min(getWeekPtsForKid(kid.id,tasks),24)},()=>'🪙').join('')}</div>
+        <!-- Spending section -->
+        <div class="bank-divider"></div>
+        <div class="bank-section-label">💸 Spending record</div>
+        <div id="wallet-spend-list-${kid.id}">${(()=>{
+          const entries = getSpendingForKid(kid.id).slice(-3).reverse();
+          if(!entries.length) return '<div style="opacity:0.35;font-size:0.78rem;padding:0.2rem 0">No spending yet</div>';
+          return entries.map(e=>`<div class="spend-row"><span class="spend-row-date">${e.date||''}</span><span class="spend-row-desc">${escHtml(e.desc||'Spent')}</span><span class="spend-row-amt">−${(e.kr||0).toFixed(2)} kr</span></div>`).join('');
+        })()}</div>
+        <!-- Balance row -->
+        <div class="bank-balance-row">
+          <div><div class="bank-balance-label">Earned this week</div><div style="font-size:0.8rem;opacity:0.6">${(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT).toFixed(3)} kr</div></div>
+          <div style="text-align:right"><div class="bank-balance-label">Remaining</div><div class="bank-balance-val ${totalSpentKid(kid.id)>(getWeekPtsForKid(kid.id,tasks)*KR_PER_PT)?'negative':''}" id="wallet-remaining-${kid.id}">${(Math.max(0,getWeekPtsForKid(kid.id,tasks)*KR_PER_PT-totalSpentKid(kid.id))).toFixed(3)} kr</div></div>
+        </div>
       </div>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
     </div>`;
@@ -1570,6 +1665,18 @@ function renderMarkTab() {
       </div>
       ${counters}
       <div class="bonus-penalty-wrap">
+        <div class="bonus-box" style="background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.25)">
+          <div class="bonus-box-icon">💸</div>
+          <div class="bonus-box-body">
+            <div class="bonus-box-title" style="color:#4ECDC4">Record Spending</div>
+            <div class="bonus-box-sub">Deduct from this week's wallet</div>
+          </div>
+          <div class="bonus-controls" style="flex-direction:column;align-items:flex-end;gap:4px">
+            <input class="bonus-input" type="number" min="0" step="0.01" id="spend-amt-${kid.id}" placeholder="kr">
+            <input class="bonus-input" id="spend-desc-${kid.id}" placeholder="what for?" style="width:110px;font-size:0.75rem">
+            <button class="btn btn-sm" style="background:rgba(78,205,196,0.2);border:1px solid rgba(78,205,196,0.4);color:#4ECDC4" onclick="recordSpending('${kid.id}')">💸 Record</button>
+          </div>
+        </div>
         <div class="bonus-box positive">
           <div class="bonus-box-icon">🌟</div>
           <div class="bonus-box-body">
@@ -2181,19 +2288,20 @@ const _kidPtsCache = {};
 
 // Called every time renderKidsView re-draws a kid card.
 // If pts increased, we fire the coin animation from the top of the screen to the wallet.
-function checkWalletUpdate(kidId, newPts) {
+function checkWalletUpdate(kidId, todayPts) {
+  // For animation, compare today's pts (gained since last render)
   const prev = _kidPtsCache[kidId];
-  _kidPtsCache[kidId] = newPts;
-  // Only animate on an actual increase, and not on first load
-  if(prev === undefined || newPts <= prev) return;
-  const gained = newPts - prev;
-  // Small delay so the DOM has rendered the wallet card
-  setTimeout(() => animateCoinsToWallet(kidId, gained, newPts), 80);
+  _kidPtsCache[kidId] = todayPts;
+  if(prev === undefined || todayPts <= prev) return;
+  const gained = todayPts - prev;
+  setTimeout(() => animateCoinsToWallet(kidId, gained, todayPts), 80);
 }
 
 let _coinAnimating = false; // prevent overlapping sequences
 
-async function animateCoinsToWallet(kidId, gained, finalPts) {
+async function animateCoinsToWallet(kidId, gained, todayPts) {
+  // Week total for final display
+  const finalPts = getWeekPtsForKid(kidId, STATE.tasks);
   if(_coinAnimating) return;
   _coinAnimating = true;
 
@@ -2202,8 +2310,6 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   const walletKrEl  = document.getElementById('wallet-kronor-'+kidId);
   if(!walletEl || !walletOreEl) { _coinAnimating=false; return; }
 
-  const ORE_PER_PT = 4.2857;
-  const KR_PER_PT  = 0.042857;
   const gainedOre = (gained * ORE_PER_PT).toFixed(1);
   const finalOre  = (finalPts * ORE_PER_PT).toFixed(1);
   const finalKr   = (finalPts * KR_PER_PT).toFixed(3);
@@ -2244,26 +2350,28 @@ async function animateCoinsToWallet(kidId, gained, finalPts) {
   await Promise.all(coinPromises);
 
   // ── Step 4: Update wallet with bump animation ──
-  walletOreEl.textContent = finalOre + ' öre';
-  walletOreEl.classList.remove('bump');
-  void walletOreEl.offsetWidth;
-  walletOreEl.classList.add('bump');
-  if(walletKrEl) {
-    walletKrEl.textContent = finalKr + ' kr';
-    walletKrEl.classList.remove('bump');
-    void walletKrEl.offsetWidth;
-    walletKrEl.classList.add('bump');
-  }
-  // Update coin pips
+  const dispWeekOre = (finalPts * ORE_PER_PT).toFixed(1);
+  const dispWeekKr  = (finalPts * KR_PER_PT).toFixed(3);
+  const dispTodayOre = (todayPts * ORE_PER_PT).toFixed(1);
+  const spent = totalSpentKid(kidId);
+  const remaining = Math.max(0, finalPts*KR_PER_PT - spent);
+
+  if(walletOreEl) { walletOreEl.textContent = dispWeekOre+' öre'; walletOreEl.classList.remove('bump'); void walletOreEl.offsetWidth; walletOreEl.classList.add('bump'); }
+  if(walletKrEl)  { walletKrEl.textContent  = dispWeekKr+' kr';  walletKrEl.classList.remove('bump');  void walletKrEl.offsetWidth;  walletKrEl.classList.add('bump'); }
+  const todayEl = document.getElementById('wallet-today-'+kidId);
+  if(todayEl) todayEl.textContent = dispTodayOre+' öre';
+  const remEl = document.getElementById('wallet-remaining-'+kidId);
+  if(remEl) { remEl.textContent = remaining.toFixed(3)+' kr'; remEl.className='bank-balance-val'+(remaining<0?' negative':''); }
+  // Pips
   const pipsEl = document.getElementById('wallet-pips-'+kidId);
   if(pipsEl) {
-    const pipCount = Math.min(finalPts, 20);
+    const pipCount = Math.min(finalPts, 24);
     pipsEl.innerHTML = '';
     for(let p=0; p<pipCount; p++){
       const pip = document.createElement('span');
       pip.className='wallet-coin-pip';
       pip.textContent='🪙';
-      pip.style.animationDelay = (p*0.04)+'s';
+      pip.style.animationDelay=(p*0.04)+'s';
       pipsEl.appendChild(pip);
     }
   }
@@ -2359,25 +2467,98 @@ function playRichCoinSound(count) {
 
 function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
 
+
+// ── Week helpers (Fri–Thu) ──────────────────────────────────────
+const ORE_PER_PT = 4.2857;
+const KR_PER_PT  = 0.042857;
+
+function getCurrentWeekRange() {
+  const now  = new Date();
+  const dow  = now.getDay(); // 0=Sun … 6=Sat
+  // days since last Friday (0 on Fri, 1 on Sat, 2 on Sun, 3 on Mon … 6 on Thu)
+  const sinceFri = (dow + 2) % 7;
+  const fri = new Date(now);
+  fri.setDate(now.getDate() - sinceFri);
+  const days = [];
+  for(let i=0;i<7;i++){
+    const d = new Date(fri);
+    d.setDate(fri.getDate()+i);
+    days.push(d.toISOString().slice(0,10));
+  }
+  return { start:days[0], end:days[6], days };
+}
+
+function getWeekPtsForKid(kidId, tasks) {
+  const { days } = getCurrentWeekRange();
+  let total = 0;
+  days.forEach(day => {
+    const dayDone = (STATE.done[day]||{});
+    const kidDone = dayDone[kidId]||{};
+    tasks.forEach(t=>{ total += (kidDone[t.id]||0)*t.points; });
+    ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
+    const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
+    total += (adj.bonus||0) - (adj.penalty||0);
+  });
+  return Math.max(0, total);
+}
+
+function getTodayPtsForKid(kidId, tasks) {
+  const tk = todayKey();
+  const dayDone = (STATE.done[tk]||{});
+  const kidDone = dayDone[kidId]||{};
+  let pts = 0;
+  tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*t.points; });
+  ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ pts+=d.pts||0; });
+  const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
+  pts += (adj.bonus||0)-(adj.penalty||0);
+  return Math.max(0,pts);
+}
+
+// Spending stored in STATE.spending = { kidId: [{desc,kr,date},...] }
+function getSpendingForKid(kidId) {
+  return ((STATE.spending||{})[kidId]||[]);
+}
+function totalSpentKid(kidId) {
+  return getSpendingForKid(kidId).reduce((s,e)=>s+(e.kr||0),0);
+}
+
+async function recordSpending(kidId) {
+  const amtEl  = document.getElementById('spend-amt-'+kidId);
+  const descEl = document.getElementById('spend-desc-'+kidId);
+  const kr   = parseFloat(amtEl ? amtEl.value : 0);
+  const desc = descEl ? descEl.value.trim() : '';
+  if(!kr || kr <= 0) { toast('Enter a valid amount!'); return; }
+  const spending = JSON.parse(JSON.stringify(STATE.spending||{}));
+  if(!spending[kidId]) spending[kidId]=[];
+  spending[kidId].push({ kr, desc: desc||'Spent', date: todayKey() });
+  await saveSpending(spending);
+  if(amtEl) amtEl.value='';
+  if(descEl) descEl.value='';
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  toast((kid?kid.emoji+' ':'')+desc+' −'+kr.toFixed(2)+' kr recorded');
+}
+
 // ============ INIT ============
 makeStars();
 
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
       fbGet('settings',{ pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS }),
-      fbGet('pending', { requests:{} }),
+      fbGet('pending',  { requests:{} }),
+      fbGet('spending', { records:{} }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
     STATE.done   = doneData.days   || {};
     STATE.pw     = settingsData.pw     || DEFAULT_PW;
     STATE.levels = settingsData.levels || DEFAULT_EMOJI_LEVELS;
-    STATE.pending = pendingData.requests || {};
+    STATE.pending  = pendingData.requests  || {};
+    STATE.spending = spendingData.records  || {};
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -2492,7 +2673,7 @@ window.deleteLevel=deleteLevel; window.saveLevelsFromEditor=saveLevelsFromEditor
 window.resetLevels=resetLevels;
 window.openSuggestModal=openSuggestModal; window.openDeedModal=openDeedModal; window.suggestTask=suggestTask; window.unsuggestTask=unsuggestTask;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
-window.approveTask=approveTask; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
+window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryDay; window.historyAdjust=historyAdjust; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
