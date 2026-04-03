@@ -1763,12 +1763,17 @@ function renderKidsView() {
       let checkClass='pending', checkContent='', nameStyle='', ptsText='+'+t.points+'pts';
       let tappable='', hint='', tapHandler='', liStyle='';
 
-      if(count > 0) {
-        // ── APPROVED (parent marked done) — locked, no undo ──
+      if(count > 0 && pendCount > 0) {
+        // ── APPROVED + another pending ──
+        checkClass='done'; checkContent=count;
+        ptsText=`×${count} done · ⏳ +1 waiting`;
+        liStyle='style="opacity:0.85"';
+      } else if(count > 0) {
+        // ── APPROVED — tap to suggest again ──
         checkClass='done'; checkContent=count;
         ptsText = `×${count} = +${count*t.points}pts`;
-        liStyle = 'style="opacity:0.75"';
-        // no tappable, no hint, no handler
+        tappable='tappable'; hint='<span class="tap-hint">tap to do again</span>';
+        tapHandler=`onclick="suggestTask('${kid.id}','${t.id}',this)"`;
       } else if(pendCount > 0) {
         // ── PENDING (kid tapped, waiting for parent) — tap to undo ──
         checkClass='waiting'; checkContent='⏳';
@@ -1791,7 +1796,7 @@ function renderKidsView() {
     return `<div class="kid-card">
       <div class="kid-top-row">
         <div class="kid-avatar-sm" style="background:linear-gradient(135deg,${col.grad});box-shadow:0 0 20px ${col.main}55">
-          ${kid.photo?`<img src="${kid.photo}" alt="">`:`<span>${kid.emoji||'⭐'}</span>`}
+          ${kid.photo?`<img src="${kid.photo}" alt="" onclick="openPhotoZoom('${kid.photo}')" style="cursor:pointer">`:`<span>${kid.emoji||'⭐'}</span>`}
           <div class="kid-photo-btn" onclick="triggerPhotoUpload('${kid.id}')">📷</div>
           <div class="pulse-ring" style="border-color:${col.main};animation-delay:${Math.random()}s"></div>
         </div>
@@ -3164,6 +3169,21 @@ function triggerPhotoUpload(kidId) {
   const inp = document.getElementById('photo-input-' + kidId);
   if(inp) inp.click();
 }
+
+function openPhotoZoom(src) {
+  let ov = document.getElementById('photo-zoom-overlay');
+  if(!ov) {
+    ov = document.createElement('div');
+    ov.id = 'photo-zoom-overlay';
+    ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+    ov.innerHTML = '<img id="photo-zoom-img" style="max-width:90vw;max-height:90vh;border-radius:16px;box-shadow:0 8px 40px #000a">';
+    ov.addEventListener('click', () => { ov.style.display = 'none'; });
+    document.body.appendChild(ov);
+  }
+  document.getElementById('photo-zoom-img').src = src;
+  ov.style.display = 'flex';
+}
+window.openPhotoZoom = openPhotoZoom;
 
 async function handlePhotoUpload(kidId, input) {
   const file = input.files[0];
