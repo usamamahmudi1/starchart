@@ -784,7 +784,7 @@
   .wallet-card {
     margin: 1rem 0 0;
     aspect-ratio: 85.6 / 54;
-    background: linear-gradient(145deg, #00005E 0%, #0000A0 50%, #00005E 100%);
+    background: linear-gradient(140deg, #00005E 0%, #00007A 25%, #6B1500 62%, #C84800 100%);
     border-radius: 14px;
     padding: 0;
     position: relative; overflow: hidden;
@@ -870,7 +870,6 @@
     font-family: 'Fredoka One', cursive; font-size: 0.68rem;
     letter-spacing: 0.06em; color: rgba(255,255,255,0.9);
     text-transform: uppercase; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis; max-width: 110px;
   }
   .wc-expiry { font-size: 0.5rem; opacity: 0.5; letter-spacing: 0.05em; margin-top: 1px; color: white; }
   /* Mastercard-style circles */
@@ -1602,14 +1601,14 @@ function renderKidsView() {
             <div class="wc-chip-row">
               <div class="bank-chip"><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div><div class="bank-chip-cell"></div></div>
               <span class="bank-contactless">📶</span>
+              <span id="wallet-pts-${kid.id}" style="display:none">${_wOre}</span>
               <span id="wallet-today-${kid.id}" style="display:none">${_tOre}</span>
-              <span id="wallet-kronor-${kid.id}" style="display:none">${_wKr}</span>
               <span id="wallet-remaining-${kid.id}" style="display:none">${_rem}</span>
               <span id="wallet-pips-${kid.id}" style="display:none"></span>
             </div>
             <div class="wc-balance-row">
               <div class="wc-field-label">BALANCE</div>
-              <div class="wallet-row-value" id="wallet-pts-${kid.id}">${_wOre} öre</div>
+              <div class="wallet-row-value" id="wallet-kronor-${kid.id}">${_wKr} kr</div>
             </div>
             <div class="wc-bottom">
               <div>
