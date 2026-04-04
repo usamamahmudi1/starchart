@@ -1280,6 +1280,7 @@
         <button class="tab-btn" onclick="switchTab('kids',this)">👧 Kids</button>
         <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
         <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
+        <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
       </div>
       <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
@@ -1430,6 +1431,13 @@
           <div style="opacity:0.5;font-size:0.9rem">No history yet.</div>
         </div>
       </div>
+
+      <!-- MONEY TAB -->
+      <div id="tab-money" style="display:none">
+        <div class="section-title">💰 Money Overview</div>
+        <div id="money-content"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1823,7 +1831,7 @@ function renderKidsView() {
         const _sp  = totalSpentKid(kid.id);
         const _bn  = totalBonusKid(kid.id);
         const _wOre = (_wp * ORE_PER_PT).toFixed(1);
-        const _wKr  = Math.round(_wp * KR_PER_PT);
+        const _wKr  = Math.round(_wp * KR_PER_PT + _bn);
         const _tOre = (_tp * ORE_PER_PT).toFixed(1);
         const _rem  = Math.max(0, _wp * KR_PER_PT + _bn - _sp).toFixed(3);
         const _cn   = String(kid.id.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
@@ -1868,7 +1876,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -2528,6 +2536,67 @@ async function saveKidEdit() {
   toast(emoji+' '+name+' updated!');
 }
 
+// ============ MONEY TAB ============
+function renderMoneyTab() {
+  const { kids, tasks } = getData();
+  const el = document.getElementById('money-content');
+  if(!el) return;
+  if(!kids.length) { el.innerHTML='<div style="opacity:0.5;font-size:0.9rem;padding:1rem">No children yet.</div>'; return; }
+
+  el.innerHTML = kids.map(kid => {
+    const col       = COLORS[kid.color]||COLORS.pink;
+    const allPts    = getAllTimePtsForKid(kid.id, tasks);
+    const earned    = allPts * KR_PER_PT;
+    const bonus     = totalBonusKid(kid.id);
+    const spent     = totalSpentKid(kid.id);
+    const balance   = Math.max(0, earned + bonus - spent);
+
+    const earnedTxns = getEarnedTransactions(kid.id, tasks);
+    const bonusTxns  = getBonusesForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) }));
+    const spendTxns  = getSpendingForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) }));
+    const allTxns    = [
+      ...earnedTxns.map(e=>({ date:e.date, desc:'📋 '+e.desc, amt:+e.kr })),
+      ...bonusTxns,
+      ...spendTxns,
+    ].sort((a,b)=>(b.date>a.date?1:b.date<a.date?-1:0));
+
+    const txnRows = allTxns.length
+      ? allTxns.map(e=>`<div style="display:flex;gap:0.5rem;align-items:flex-start;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.78rem">
+          <span style="opacity:0.45;min-width:68px;flex-shrink:0">${e.date}</span>
+          <span style="flex:1;opacity:0.85">${e.desc}</span>
+          <span style="font-weight:700;color:${e.amt>=0?'#2ecc71':'#e74c3c'};min-width:55px;text-align:right">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
+        </div>`).join('')
+      : '<div style="opacity:0.4;font-size:0.82rem;padding:0.4rem 0">No activity yet</div>';
+
+    return `<div class="p-card" style="margin-bottom:1rem;border-left:3px solid ${col.main}">
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.75rem">
+        <span style="font-size:1.4rem">${kid.emoji||'⭐'}</span>
+        <span style="font-weight:700;font-size:1.05rem;color:${col.main}">${escHtml(kid.name)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
+        <div style="background:rgba(46,204,113,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:#2ecc71">+${earned.toFixed(2)}</div>
+          <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Earned</div>
+        </div>
+        <div style="background:rgba(255,215,0,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:#FFD700">+${bonus.toFixed(2)}</div>
+          <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Bonus</div>
+        </div>
+        <div style="background:rgba(231,76,60,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:#e74c3c">−${spent.toFixed(2)}</div>
+          <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Spent</div>
+        </div>
+        <div style="background:rgba(52,152,219,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:#3498db">${balance.toFixed(2)}</div>
+          <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Balance</div>
+        </div>
+      </div>
+      <div style="max-height:220px;overflow-y:auto">${txnRows}</div>
+    </div>`;
+  }).join('');
+}
+window.renderMoneyTab = renderMoneyTab;
+
 // ============ HISTORY TAB ============
 function renderHistoryTab() {
   const { kids, tasks, done } = getData();
@@ -2666,7 +2735,7 @@ async function historyAdjust(day, kidId, taskId, delta) {
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','approvals','tasks','kids','settings','history'].forEach(t=>{
+  ['mark','approvals','tasks','kids','settings','history','money'].forEach(t=>{
     const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
   if(name==='mark')      renderMarkTab();
@@ -2675,6 +2744,7 @@ function switchTab(name, btn) {
   if(name==='kids')      renderKidsTab();
   if(name==='settings')  renderLevelsEditor();
   if(name==='history')   renderHistoryTab();
+  if(name==='money')     renderMoneyTab();
 }
 
 
@@ -2750,7 +2820,7 @@ async function animateCoinsToWallet(kidId, gained, todayPts) {
 
   // ── Step 4: Update wallet with bump animation ──
   const dispWeekOre = (finalPts * ORE_PER_PT).toFixed(1);
-  const dispWeekKr  = Math.round(finalPts * KR_PER_PT);
+  const dispWeekKr  = Math.round(finalPts * KR_PER_PT + totalBonusKid(kidId));
   const dispTodayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const spent = totalSpentKid(kidId);
   const remaining = Math.max(0, finalPts*KR_PER_PT + totalBonusKid(kidId) - spent);
@@ -2924,6 +2994,38 @@ function getAllTimePtsForKid(kidId, tasks) {
     total += (adj.bonus||0)-(adj.penalty||0);
   });
   return Math.max(0, total);
+}
+
+// Returns [{date, desc, kr}] of earned income per day for a kid
+function getEarnedTransactions(kidId, tasks) {
+  const result = [];
+  Object.keys(STATE.done).sort().forEach(day => {
+    const dayDone = STATE.done[day];
+    const kidDone = dayDone[kidId]||{};
+    let dayPts = 0;
+    const lines = [];
+    tasks.forEach(t => {
+      const cnt = kidDone[t.id]||0;
+      if(cnt > 0) {
+        const pts = cnt * getTaskPts(kidDone, t.id, t.points);
+        dayPts += pts;
+        lines.push(`${escHtml(t.name)}${cnt>1?' ×'+cnt:''}`);
+      }
+    });
+    ((dayDone.xdeeds||{})[kidId]||[]).forEach(d => {
+      dayPts += d.pts||0;
+      lines.push(`✨ ${escHtml(d.desc||'Extra deed')}`);
+    });
+    const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
+    const net = (adj.bonus||0)-(adj.penalty||0);
+    if(net > 0) lines.push(`pts bonus +${net}`);
+    if(net < 0) lines.push(`pts penalty ${net}`);
+    dayPts += net;
+    if(dayPts > 0) {
+      result.push({ date: day, desc: lines.join(', ') || 'Tasks done', kr: +(dayPts * KR_PER_PT) });
+    }
+  });
+  return result.reverse();
 }
 
 // Spending stored in STATE.spending = { kidId: [{desc,kr,date},...] }
@@ -3231,15 +3333,17 @@ function openCardDetail(kidId) {
   const bonusList = getBonusesForKid(kidId).slice().reverse();
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
   const remClass = remaining < 0 ? 'red' : 'teal';
+  const earnedList = getEarnedTransactions(kidId, tasks);
   const allTxns = [
-    ...spendList.map(e=>({ date:e.date||'', desc:e.desc||'Spent', amt:-(e.kr||0), color:'' })),
-    ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0), color:'#2ecc71' })),
+    ...earnedList.map(e=>({ date:e.date, desc:'📋 '+e.desc,   amt:+e.kr,          type:'earn' })),
+    ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0), type:'bonus' })),
+    ...spendList.map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0), type:'spend' })),
   ].sort((a,b)=>(b.date>a.date?1:b.date<a.date?-1:0));
-  const txnHtml  = allTxns.length
+  const txnHtml = allTxns.length
     ? allTxns.map(e=>`<div class="cd-txn-row">
         <span class="cd-txn-date">${e.date}</span>
-        <span class="cd-txn-desc">${escHtml(e.desc)}</span>
-        <span class="cd-txn-amt" style="${e.amt>0?'color:#2ecc71':''}">${e.amt>0?'+':''}${e.amt.toFixed(2)} kr</span>
+        <span class="cd-txn-desc" style="font-size:0.78rem">${e.desc}</span>
+        <span class="cd-txn-amt" style="color:${e.amt>=0?'#2ecc71':'#e74c3c'};font-weight:700">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
       </div>`).join('')
     : '<div style="opacity:0.4;font-size:0.85rem;padding:0.5rem 0">No transactions yet</div>';
   const overlay = document.getElementById('card-detail-overlay');
