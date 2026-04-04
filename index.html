@@ -1403,6 +1403,31 @@
         <div class="p-card">
           <div class="section-title" style="margin-bottom:0.75rem">🏅 Appreciation Levels</div>
           <div style="font-size:0.85rem;opacity:0.6;margin-bottom:1rem">Set which emoji appears at each point milestone. Click an emoji to change it, or type your own.</div>
+
+          <!-- FORMULA GENERATOR -->
+          <div style="background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.25);border-radius:12px;padding:0.85rem;margin-bottom:1.1rem">
+            <div style="font-weight:700;font-size:0.88rem;color:#FFD700;margin-bottom:0.3rem">⚡ Formula Generator</div>
+            <div style="font-size:0.76rem;opacity:0.55;margin-bottom:0.65rem">Auto-generate level thresholds. Names &amp; emojis assigned automatically from the motivational pool.</div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.55rem">
+              <select id="formula-type" class="form-input" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.82rem" onchange="previewFormula()">
+                <option value="linear">📈 Linear — equal steps</option>
+                <option value="escalating">🚀 Escalating — steps grow ×1.5</option>
+                <option value="fibonacci">🌀 Fibonacci — slow then fast</option>
+                <option value="turbo">💥 Turbo — doubles each level</option>
+              </select>
+              <div style="display:flex;align-items:center;gap:0.3rem">
+                <label style="font-size:0.75rem;opacity:0.6;white-space:nowrap">Step pts</label>
+                <input id="formula-param" class="form-input" type="number" min="1" value="10" style="width:60px;padding:0.3rem 0.4rem;font-size:0.82rem;text-align:center" oninput="previewFormula()">
+              </div>
+              <div style="display:flex;align-items:center;gap:0.3rem">
+                <label style="font-size:0.75rem;opacity:0.6;white-space:nowrap"># Levels</label>
+                <input id="formula-count" class="form-input" type="number" min="2" max="20" value="7" style="width:52px;padding:0.3rem 0.4rem;font-size:0.82rem;text-align:center" oninput="previewFormula()">
+              </div>
+              <button class="btn btn-gold btn-sm" onclick="generateLevels()" style="white-space:nowrap">⚡ Generate</button>
+            </div>
+            <div id="formula-preview" style="font-size:0.74rem;opacity:0.55;line-height:1.6;min-height:1.2em"></div>
+          </div>
+
           <div id="levels-preview-bar" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem"></div>
           <div class="levels-editor" id="levels-editor"></div>
           <div style="display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap">
@@ -2296,16 +2321,21 @@ const LEVEL_FILL_POOL = [
   { label:'Ultimate Legend', emoji:'🎖️' },
 ];
 
+// Generic placeholder detector — catches "Level 3", "New level", "New Level", blank, etc.
+function isGenericLevelName(label) {
+  if(!label || !label.trim()) return true;
+  return /^(new\s*level|level\s*\d*|unnamed|untitled)$/i.test(label.trim());
+}
+
 // Fill in missing name/emoji for any level that has a generic placeholder
 async function autoFillLevels() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
-  const usedLabels = new Set(levels.map(l=>l.label));
+  const usedLabels = new Set(levels.filter(l=>!isGenericLevelName(l.label)).map(l=>l.label));
   let changed = false;
   levels.forEach((l, i) => {
-    const nameMissing = !l.label || /^Level \d+$/i.test(l.label);
+    const nameMissing = isGenericLevelName(l.label);
     const emojiMissing = !l.emoji || l.emoji === '🌟';
     if(nameMissing || emojiMissing) {
-      // Find a fill entry not already used
       const fill = LEVEL_FILL_POOL.find(f => !usedLabels.has(f.label)) || LEVEL_FILL_POOL[i % LEVEL_FILL_POOL.length];
       if(nameMissing)  { l.label = fill.label; usedLabels.add(fill.label); }
       if(emojiMissing) { l.emoji = fill.emoji; }
@@ -2319,12 +2349,58 @@ async function addLevel() {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
   const maxMin = levels.reduce((m,l)=>Math.max(m,l.min),0);
   const usedLabels = new Set(levels.map(l=>l.label));
-  const nextName = LEVEL_NAME_POOL.find(n=>!usedLabels.has(n)) || `Level ${levels.length+1}`;
-  levels.push({ min:maxMin+10, emoji:'🌟', label:nextName });
+  const fill = LEVEL_FILL_POOL.find(f => !usedLabels.has(f.label)) || LEVEL_FILL_POOL[levels.length % LEVEL_FILL_POOL.length];
+  levels.push({ min: maxMin+10, emoji: fill.emoji, label: fill.label });
   await saveLevels(levels);
   renderLevelsEditor();
   toast('Level added!');
 }
+
+// ---- Formula calculator ----
+function calcFormulaThresholds(type, param, count) {
+  const p = Math.max(1, parseInt(param)||10);
+  const n = Math.max(2, Math.min(20, parseInt(count)||7));
+  const thresholds = [0];
+  if(type === 'linear') {
+    for(let i=1; i<n; i++) thresholds.push(i * p);
+  } else if(type === 'escalating') {
+    let gap = p, total = 0;
+    for(let i=1; i<n; i++) { total += Math.round(gap); thresholds.push(total); gap *= 1.5; }
+  } else if(type === 'fibonacci') {
+    let a = 1, b = 1, total = 0;
+    for(let i=1; i<n; i++) { total += a * p; thresholds.push(total); [a,b] = [b, a+b]; }
+  } else { // turbo
+    for(let i=1; i<n; i++) thresholds.push(Math.round(p * Math.pow(2, i-1)));
+  }
+  return thresholds;
+}
+
+function previewFormula() {
+  const type  = (document.getElementById('formula-type')||{}).value || 'linear';
+  const param = (document.getElementById('formula-param')||{}).value || '10';
+  const count = (document.getElementById('formula-count')||{}).value || '7';
+  const t = calcFormulaThresholds(type, param, count);
+  const names = LEVEL_FILL_POOL.slice(0, t.length);
+  const preview = document.getElementById('formula-preview');
+  if(preview) preview.textContent = t.map((v,i)=>`${names[i]?names[i].emoji:'⭐'} ${v}+ pts`).join('  ·  ');
+}
+window.previewFormula = previewFormula;
+
+async function generateLevels() {
+  const type  = (document.getElementById('formula-type')||{}).value || 'linear';
+  const param = (document.getElementById('formula-param')||{}).value || '10';
+  const count = (document.getElementById('formula-count')||{}).value || '7';
+  const thresholds = calcFormulaThresholds(type, param, count);
+  const levels = thresholds.map((min, i) => {
+    const fill = LEVEL_FILL_POOL[i % LEVEL_FILL_POOL.length];
+    return { min, emoji: fill.emoji, label: fill.label };
+  });
+  await saveLevels(levels);
+  renderLevelsEditor();
+  const m = document.getElementById('levels-msg');
+  if(m) { m.style.color='#2ecc71'; m.textContent=`✓ ${levels.length} levels generated!`; setTimeout(()=>m.textContent='',2500); }
+}
+window.generateLevels = generateLevels;
 
 async function deleteLevel(i) {
   const levels = getLevels().slice().sort((a,b)=>a.min-b.min);
@@ -2762,7 +2838,7 @@ function switchTab(name, btn) {
   if(name==='approvals') renderApprovalsTab();
   if(name==='tasks')     renderTasksTab();
   if(name==='kids')      renderKidsTab();
-  if(name==='settings')  renderLevelsEditor();
+  if(name==='settings')  { renderLevelsEditor(); previewFormula(); }
   if(name==='history')   renderHistoryTab();
   if(name==='money')     renderMoneyTab();
 }
