@@ -1863,7 +1863,7 @@ function renderKidsView() {
           <div class="kid-photo-btn" onclick="triggerPhotoUpload('${kid.id}')">📷</div>
           <div class="pulse-ring" style="border-color:${col.main};animation-delay:${Math.random()}s"></div>
         </div>
-        <div class="kid-top-info">
+        <div class="kid-top-info" style="flex:1">
           <div class="kid-name" style="color:${col.main};text-align:left;margin-bottom:0">${escHtml(kid.name)}</div>
           <div class="kid-pts-inline">
             <span class="kid-pts-num">${pts}</span>
@@ -1871,6 +1871,7 @@ function renderKidsView() {
             ${stars?`<span style="font-size:0.8rem;margin-left:2px">${stars}</span>`:''}
           </div>
         </div>
+        <button onclick="openStellar('${kid.id}')" title="Chat with Stellar" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:50%;width:42px;height:42px;font-size:1.25rem;cursor:pointer;flex-shrink:0;box-shadow:0 4px 16px rgba(102,126,234,0.5);transition:transform 0.15s" onmousedown="this.style.transform='scale(0.9)'" onmouseup="this.style.transform=''">🌟</button>
       </div>
       <div class="kid-level-banner">
         <span class="kid-level-banner-emoji">${level.emoji}</span>
@@ -1919,7 +1920,6 @@ function renderKidsView() {
       })()}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:0.75rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
-      <button class="stellar-btn" onclick="openStellar('${kid.id}')" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:14px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.9rem;font-weight:800;padding:0.6rem 1rem;width:100%;cursor:pointer;margin-top:0.4rem;letter-spacing:0.02em;box-shadow:0 4px 20px rgba(102,126,234,0.45);transition:all 0.2s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform=''">🌟 Chat with Stellar</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
