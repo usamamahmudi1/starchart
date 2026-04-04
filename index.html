@@ -1526,6 +1526,7 @@ function scheduleRender(docId) {
       if(tabName.includes('Kids'))     renderKidsTab();
       if(tabName.includes('Settings')) renderLevelsEditor();
       if(tabName.includes('History'))  renderHistoryTab();
+      if(tabName.includes('Money'))    renderMoneyTab();
     }
     // Update pending badge on mark tab button regardless of active tab
     updatePendingBadge();
@@ -1831,9 +1832,8 @@ function renderKidsView() {
         const _sp  = totalSpentKid(kid.id);
         const _bn  = totalBonusKid(kid.id);
         const _wOre = (_wp * ORE_PER_PT).toFixed(1);
-        const _wKr  = Math.round(_wp * KR_PER_PT + _bn);
+        const _wKr  = Math.max(0, _wp * KR_PER_PT + _bn - _sp); // remaining balance
         const _tOre = (_tp * ORE_PER_PT).toFixed(1);
-        const _rem  = Math.max(0, _wp * KR_PER_PT + _bn - _sp).toFixed(3);
         const _cn   = String(kid.id.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
         return `<div class="wallet-card" id="wallet-${kid.id}" onclick="openCardDetail('${kid.id}')">
           <div class="wc-inner">
@@ -1845,12 +1845,12 @@ function renderKidsView() {
               <span class="bank-contactless">📶</span>
               <span id="wallet-pts-${kid.id}" style="display:none">${_wOre}</span>
               <span id="wallet-today-${kid.id}" style="display:none">${_tOre}</span>
-              <span id="wallet-remaining-${kid.id}" style="display:none">${_rem}</span>
+              <span id="wallet-remaining-${kid.id}" style="display:none">${_wKr.toFixed(3)}</span>
               <span id="wallet-pips-${kid.id}" style="display:none"></span>
             </div>
             <div class="wc-balance-row">
               <div class="wc-field-label">BALANCE</div>
-              <div class="wallet-row-value" id="wallet-kronor-${kid.id}">${_wKr} kr</div>
+              <div class="wallet-row-value" id="wallet-kronor-${kid.id}">${Math.round(_wKr)} kr</div>
             </div>
             <div class="wc-bottom">
               <div>
@@ -2554,17 +2554,23 @@ function renderMoneyTab() {
     const earnedTxns = getEarnedTransactions(kid.id, tasks);
     const bonusTxns  = getBonusesForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) }));
     const spendTxns  = getSpendingForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) }));
-    const allTxns    = [
+    const allTxnsChron = [
       ...earnedTxns.map(e=>({ date:e.date, desc:'📋 '+e.desc, amt:+e.kr })),
       ...bonusTxns,
       ...spendTxns,
-    ].sort((a,b)=>(b.date>a.date?1:b.date<a.date?-1:0));
+    ].sort((a,b)=>(a.date>b.date?1:a.date<b.date?-1:0));
+    let rb = 0;
+    allTxnsChron.forEach(e => { rb += e.amt; e.bal = Math.max(0, rb); });
+    const allTxns = allTxnsChron.slice().reverse();
 
     const txnRows = allTxns.length
       ? allTxns.map(e=>`<div style="display:flex;gap:0.5rem;align-items:flex-start;padding:0.35rem 0;border-bottom:1px solid rgba(255,255,255,0.06);font-size:0.78rem">
           <span style="opacity:0.45;min-width:68px;flex-shrink:0">${e.date}</span>
           <span style="flex:1;opacity:0.85">${e.desc}</span>
-          <span style="font-weight:700;color:${e.amt>=0?'#2ecc71':'#e74c3c'};min-width:55px;text-align:right">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:65px">
+            <span style="font-weight:700;color:${e.amt>=0?'#2ecc71':'#e74c3c'}">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
+            <span style="font-size:0.66rem;opacity:0.45">bal ${Math.round(e.bal)} kr</span>
+          </div>
         </div>`).join('')
       : '<div style="opacity:0.4;font-size:0.82rem;padding:0.4rem 0">No activity yet</div>';
 
@@ -2820,10 +2826,10 @@ async function animateCoinsToWallet(kidId, gained, todayPts) {
 
   // ── Step 4: Update wallet with bump animation ──
   const dispWeekOre = (finalPts * ORE_PER_PT).toFixed(1);
-  const dispWeekKr  = Math.round(finalPts * KR_PER_PT + totalBonusKid(kidId));
   const dispTodayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const spent = totalSpentKid(kidId);
   const remaining = Math.max(0, finalPts*KR_PER_PT + totalBonusKid(kidId) - spent);
+  const dispWeekKr  = Math.round(remaining);
 
   if(walletOreEl) { walletOreEl.textContent = dispWeekOre+' öre'; walletOreEl.classList.remove('bump'); void walletOreEl.offsetWidth; walletOreEl.classList.add('bump'); }
   if(walletKrEl)  { walletKrEl.textContent  = dispWeekKr+' kr';  walletKrEl.classList.remove('bump');  void walletKrEl.offsetWidth;  walletKrEl.classList.add('bump'); }
@@ -3054,6 +3060,7 @@ async function addBonusKr(kidId) {
   if(amtEl)  amtEl.value  = '';
   if(descEl) descEl.value = '';
   toast('🎁 Bonus added!');
+  _updateCardBalance(kidId);
   renderKidsTab();
 }
 window.addBonusKr = addBonusKr;
@@ -3072,6 +3079,19 @@ async function recordSpending(kidId) {
   if(descEl) descEl.value='';
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast((kid?kid.emoji+' ':'')+desc+' −'+kr.toFixed(2)+' kr recorded');
+  // Immediately update wallet card balance DOM without waiting for Firebase listener
+  _updateCardBalance(kidId);
+}
+
+function _updateCardBalance(kidId) {
+  const { tasks } = getData();
+  const allPts  = getAllTimePtsForKid(kidId, tasks);
+  const balance = Math.max(0, allPts * KR_PER_PT + totalBonusKid(kidId) - totalSpentKid(kidId));
+  const krEl = document.getElementById('wallet-kronor-'+kidId);
+  if(krEl) {
+    krEl.textContent = Math.round(balance)+' kr';
+    krEl.classList.remove('bump'); void krEl.offsetWidth; krEl.classList.add('bump');
+  }
 }
 
 // ============ INIT ============
@@ -3334,16 +3354,23 @@ function openCardDetail(kidId) {
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
   const remClass = remaining < 0 ? 'red' : 'teal';
   const earnedList = getEarnedTransactions(kidId, tasks);
-  const allTxns = [
-    ...earnedList.map(e=>({ date:e.date, desc:'📋 '+e.desc,   amt:+e.kr,          type:'earn' })),
-    ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0), type:'bonus' })),
-    ...spendList.map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0), type:'spend' })),
-  ].sort((a,b)=>(b.date>a.date?1:b.date<a.date?-1:0));
+  const allTxnsChron = [
+    ...earnedList.map(e=>({ date:e.date, desc:'📋 '+e.desc,   amt:+e.kr })),
+    ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) })),
+    ...spendList.map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) })),
+  ].sort((a,b)=>(a.date>b.date?1:a.date<b.date?-1:0)); // oldest first
+  // Compute running balance per row
+  let runBal = 0;
+  allTxnsChron.forEach(e => { runBal += e.amt; e.bal = Math.max(0, runBal); });
+  const allTxns = allTxnsChron.slice().reverse(); // newest first for display
   const txnHtml = allTxns.length
-    ? allTxns.map(e=>`<div class="cd-txn-row">
-        <span class="cd-txn-date">${e.date}</span>
-        <span class="cd-txn-desc" style="font-size:0.78rem">${e.desc}</span>
-        <span class="cd-txn-amt" style="color:${e.amt>=0?'#2ecc71':'#e74c3c'};font-weight:700">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
+    ? allTxns.map(e=>`<div class="cd-txn-row" style="align-items:flex-start">
+        <span class="cd-txn-date" style="min-width:70px">${e.date}</span>
+        <span class="cd-txn-desc" style="font-size:0.78rem;flex:1">${e.desc}</span>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;min-width:65px">
+          <span class="cd-txn-amt" style="color:${e.amt>=0?'#2ecc71':'#e74c3c'};font-weight:700">${e.amt>=0?'+':''}${e.amt.toFixed(2)} kr</span>
+          <span style="font-size:0.68rem;opacity:0.5">bal ${Math.round(e.bal)} kr</span>
+        </div>
       </div>`).join('')
     : '<div style="opacity:0.4;font-size:0.85rem;padding:0.5rem 0">No transactions yet</div>';
   const overlay = document.getElementById('card-detail-overlay');
