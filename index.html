@@ -3626,7 +3626,18 @@ window.approveTask=approveTask; window.recordSpending=recordSpending; window.rej
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 
 // ============ STELLAR AI COACH ============
-function getStellarKey() { return STATE.stellarKey||''; }
+function getStellarKey() {
+  const fbKey = STATE.stellarKey||'';
+  if(fbKey) return fbKey;
+  // Fallback: migrate old localStorage key to Firebase
+  const lsKey = localStorage.getItem('stellar_api_key')||'';
+  if(lsKey) {
+    // Silently migrate to Firebase so all devices get it
+    saveStellarKeyFb(lsKey).then(()=>localStorage.removeItem('stellar_api_key'));
+    return lsKey;
+  }
+  return '';
+}
 async function saveStellarKey() {
   const v = document.getElementById('stellar-api-key').value.trim();
   if(!v) { toast('Paste your API key first'); return; }
