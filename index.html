@@ -1409,15 +1409,19 @@
             <div style="font-weight:700;font-size:0.88rem;color:#FFD700;margin-bottom:0.3rem">⚡ Formula Generator</div>
             <div style="font-size:0.76rem;opacity:0.55;margin-bottom:0.65rem">Auto-generate level thresholds. Names &amp; emojis assigned automatically from the motivational pool.</div>
             <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;margin-bottom:0.55rem">
-              <select id="formula-type" class="form-input" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.82rem" onchange="previewFormula()">
+              <select id="formula-type" class="form-input" style="flex:1;min-width:160px;padding:0.35rem 0.5rem;font-size:0.82rem" onchange="onFormulaTypeChange()">
                 <option value="linear">📈 Linear — equal steps</option>
-                <option value="escalating">🚀 Escalating — steps grow ×1.5</option>
+                <option value="escalating">🚀 Escalating — steps grow ×multiplier</option>
                 <option value="fibonacci">🌀 Fibonacci — slow then fast</option>
                 <option value="turbo">💥 Turbo — doubles each level</option>
               </select>
               <div style="display:flex;align-items:center;gap:0.3rem">
                 <label style="font-size:0.75rem;opacity:0.6;white-space:nowrap">Step pts</label>
                 <input id="formula-param" class="form-input" type="number" min="1" value="10" style="width:60px;padding:0.3rem 0.4rem;font-size:0.82rem;text-align:center" oninput="previewFormula()">
+              </div>
+              <div id="formula-mult-wrap" style="display:none;align-items:center;gap:0.3rem">
+                <label style="font-size:0.75rem;opacity:0.6;white-space:nowrap">Multiplier</label>
+                <input id="formula-mult" class="form-input" type="number" min="1.1" max="5" step="0.1" value="1.5" style="width:60px;padding:0.3rem 0.4rem;font-size:0.82rem;text-align:center" oninput="previewFormula()">
               </div>
               <div style="display:flex;align-items:center;gap:0.3rem">
                 <label style="font-size:0.75rem;opacity:0.6;white-space:nowrap"># Levels</label>
@@ -2388,15 +2392,24 @@ async function addLevel() {
 }
 
 // ---- Formula calculator ----
-function calcFormulaThresholds(type, param, count) {
+function onFormulaTypeChange() {
+  const type = (document.getElementById('formula-type')||{}).value;
+  const wrap = document.getElementById('formula-mult-wrap');
+  if(wrap) wrap.style.display = type === 'escalating' ? 'flex' : 'none';
+  previewFormula();
+}
+window.onFormulaTypeChange = onFormulaTypeChange;
+
+function calcFormulaThresholds(type, param, count, mult) {
   const p = Math.max(1, parseInt(param)||10);
-  const n = Math.max(2, Math.min(20, parseInt(count)||7));
+  const n = Math.max(2, Math.min(50, parseInt(count)||7));
+  const m = Math.max(1.1, parseFloat(mult)||1.5);
   const thresholds = [0];
   if(type === 'linear') {
     for(let i=1; i<n; i++) thresholds.push(i * p);
   } else if(type === 'escalating') {
     let gap = p, total = 0;
-    for(let i=1; i<n; i++) { total += Math.round(gap); thresholds.push(total); gap *= 1.5; }
+    for(let i=1; i<n; i++) { total += Math.round(gap); thresholds.push(total); gap *= m; }
   } else if(type === 'fibonacci') {
     let a = 1, b = 1, total = 0;
     for(let i=1; i<n; i++) { total += a * p; thresholds.push(total); [a,b] = [b, a+b]; }
@@ -2410,7 +2423,8 @@ function previewFormula() {
   const type  = (document.getElementById('formula-type')||{}).value || 'linear';
   const param = (document.getElementById('formula-param')||{}).value || '10';
   const count = (document.getElementById('formula-count')||{}).value || '7';
-  const t = calcFormulaThresholds(type, param, count);
+  const mult  = (document.getElementById('formula-mult')||{}).value  || '1.5';
+  const t = calcFormulaThresholds(type, param, count, mult);
   const names = LEVEL_FILL_POOL.slice(0, t.length);
   const preview = document.getElementById('formula-preview');
   if(preview) preview.textContent = t.map((v,i)=>`${names[i]?names[i].emoji:'⭐'} ${v}+ pts`).join('  ·  ');
@@ -2421,7 +2435,8 @@ async function generateLevels() {
   const type  = (document.getElementById('formula-type')||{}).value || 'linear';
   const param = (document.getElementById('formula-param')||{}).value || '10';
   const count = (document.getElementById('formula-count')||{}).value || '7';
-  const thresholds = calcFormulaThresholds(type, param, count);
+  const mult  = (document.getElementById('formula-mult')||{}).value  || '1.5';
+  const thresholds = calcFormulaThresholds(type, param, count, mult);
   const levels = thresholds.map((min, i) => {
     const fill = LEVEL_FILL_POOL[i % LEVEL_FILL_POOL.length];
     return { min, emoji: fill.emoji, label: fill.label };
