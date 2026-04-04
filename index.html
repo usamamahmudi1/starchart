@@ -3661,8 +3661,10 @@ function _stellarSettingsInit() {
   if(el) el.value = STATE.stellarKey||'';
 }
 
-let _stellarKidId = null;
-let _stellarHistory = []; // {role, content}
+let _stellarKidId  = null;
+let _stellarHistory = [];
+let _stellarRecog   = null;
+let _stellarMicOn   = false;
 
 function _buildStellarSystemPrompt(kid) {
   const { tasks } = getData();
@@ -3701,80 +3703,55 @@ Current snapshot:
 Your goal: motivate ${kid.name} to earn more points, celebrate what they've done, and suggest activities fitting the ${timeOfDay}. If all tasks are done, celebrate massively and suggest a bonus challenge. If it's evening or night, encourage winding down with calm helpful tasks.`;
 }
 
-function _stellarBubble(role, text, typing=false) {
-  const msgs = document.getElementById('stellar-messages');
-  if(!msgs) return null;
-  const isBot = role==='assistant';
-  const div = document.createElement('div');
-  div.style.cssText=`display:flex;justify-content:${isBot?'flex-start':'flex-end'}`;
-  const bubble = document.createElement('div');
-  bubble.style.cssText=`max-width:82%;padding:0.6rem 0.9rem;border-radius:${isBot?'6px 18px 18px 18px':'18px 6px 18px 18px'};font-size:0.88rem;line-height:1.5;font-family:'Nunito',sans-serif;${isBot?'background:rgba(102,126,234,0.18);color:#e8e8ff;border:1px solid rgba(102,126,234,0.25)':'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff'}`;
-  bubble.textContent = typing ? '…' : text;
-  if(typing) bubble.id='stellar-typing';
-  div.appendChild(bubble);
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-  return bubble;
+// ── helpers ──
+function _stellarSetStatus(icon, status, subtitle) {
+  const orb      = document.getElementById('stellar-orb');
+  const statusEl = document.getElementById('stellar-bar-status');
+  const subEl    = document.getElementById('stellar-subtitle');
+  if(orb && icon)       orb.textContent = icon;
+  if(statusEl && status) statusEl.textContent = status;
+  if(subEl !== null)    subEl.textContent = subtitle || '';
+}
+function _stellarOrbPulse(on) {
+  const orb = document.getElementById('stellar-orb');
+  if(!orb) return;
+  orb.style.boxShadow = on ? '0 0 0 10px rgba(102,126,234,0.25),0 0 0 20px rgba(102,126,234,0.1)' : '0 0 0 0 rgba(102,126,234,0.5)';
 }
 
 async function openStellar(kidId) {
   const key = getStellarKey();
-  if(!key) {
-    toast('Ask a parent to add the Stellar API key in Settings ⚙️');
-    return;
-  }
-  _stellarKidId = kidId;
+  if(!key) { toast('Ask a parent to add the Stellar API key in Settings ⚙️'); return; }
+  _stellarKidId   = kidId;
   _stellarHistory = [];
   const kid = STATE.kids.find(k=>k.id===kidId);
   if(!kid) return;
-
-  const overlay = document.getElementById('stellar-overlay');
-  const title   = document.getElementById('stellar-title');
-  const msgs    = document.getElementById('stellar-messages');
-  if(title) title.textContent = `Stellar · ${kid.name}`;
-  if(msgs)  msgs.innerHTML = '';
-  overlay.style.display = 'flex';
-  setTimeout(()=>{ const inp=document.getElementById('stellar-input'); if(inp) inp.focus(); },300);
-
-  // Opening message from Stellar
-  await _stellarRespond(kid, null);
+  document.getElementById('stellar-bar-name').textContent = `Stellar · ${kid.name}`;
+  document.getElementById('stellar-bar').style.display = 'block';
+  _stellarSetStatus('🌟', 'Getting ready…', '');
+  await _stellarRespond(kid, null);  // opening greeting
 }
-window.openStellar=openStellar;
+window.openStellar = openStellar;
 
 function closeStellar() {
-  document.getElementById('stellar-overlay').style.display='none';
-  _stellarKidId=null; _stellarHistory=[];
+  speechSynthesis.cancel();
+  _stellarMicOff();
+  if(_stellarRecog) { try{ _stellarRecog.stop(); }catch(e){} }
+  document.getElementById('stellar-bar').style.display = 'none';
+  _stellarKidId = null; _stellarHistory = [];
 }
-window.closeStellar=closeStellar;
-
-async function sendStellar() {
-  const inp = document.getElementById('stellar-input');
-  const text = (inp ? inp.value : '').trim();
-  if(!text || !_stellarKidId) return;
-  inp.value='';
-  inp.style.height='';
-  const kid = STATE.kids.find(k=>k.id===_stellarKidId);
-  if(!kid) return;
-  _stellarBubble('user', text);
-  _stellarHistory.push({ role:'user', content:text });
-  await _stellarRespond(kid, text);
-}
-window.sendStellar=sendStellar;
+window.closeStellar = closeStellar;
 
 async function _stellarRespond(kid, userMsg) {
+  _stellarSetStatus('💭', 'Thinking…', '');
+  _stellarOrbPulse(true);
   const key = getStellarKey();
-  const sendBtn = document.getElementById('stellar-send');
-  if(sendBtn) sendBtn.disabled=true;
-
-  const typingBubble = _stellarBubble('assistant','',true);
   try {
-    const messages = userMsg===null
+    const messages = userMsg === null
       ? [{ role:'user', content:`Hi Stellar! I'm ${kid.name}. How am I doing today?` }]
-      : _stellarHistory.slice(-12); // keep last 12 turns for context
-
+      : _stellarHistory.slice(-12);
     const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method:'POST',
-      headers:{
+      method: 'POST',
+      headers: {
         'x-api-key': key,
         'anthropic-version': '2023-06-01',
         'content-type': 'application/json',
@@ -3782,100 +3759,77 @@ async function _stellarRespond(kid, userMsg) {
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
-        max_tokens: 256,
+        max_tokens: 200,
         system: _buildStellarSystemPrompt(kid),
         messages,
       })
     });
-    if(!res.ok) {
-      const err = await res.json().catch(()=>({error:{message:'API error'}}));
-      throw new Error(err?.error?.message||'API error '+res.status);
-    }
-    const data = await res.json();
+    if(!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e?.error?.message||'API error'); }
+    const data  = await res.json();
     const reply = data.content?.[0]?.text || '…';
-    if(typingBubble) typingBubble.textContent = reply;
     _stellarHistory.push({ role:'assistant', content:reply });
     if(userMsg===null) _stellarHistory.unshift({ role:'user', content:`Hi Stellar! I'm ${kid.name}. How am I doing today?` });
     _stellarSpeak(reply);
   } catch(e) {
-    if(typingBubble) { typingBubble.textContent='Oops! '+e.message; typingBubble.style.color='#e74c3c'; }
-  } finally {
-    if(sendBtn) sendBtn.disabled=false;
-    const msgs=document.getElementById('stellar-messages');
-    if(msgs) msgs.scrollTop=msgs.scrollHeight;
+    _stellarSetStatus('🌟', 'Something went wrong', e.message);
+    _stellarOrbPulse(false);
   }
 }
 
-// ── TTS ──
+// ── TTS: speak reply, show subtitle, pulse orb while speaking ──
 function _stellarSpeak(text) {
   try {
     speechSynthesis.cancel();
+    _stellarSetStatus('🌟', 'Speaking…', text);
+    _stellarOrbPulse(true);
     const utt = new SpeechSynthesisUtterance(text);
-    utt.rate  = 1.05;
-    utt.pitch = 1.2;
-    utt.volume = 1;
+    utt.rate = 1.05; utt.pitch = 1.2; utt.volume = 1;
     const voices = speechSynthesis.getVoices();
-    const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name)) || voices.find(v=>/en/i.test(v.lang)) || voices[0];
+    const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+              || voices.find(v=>/en/i.test(v.lang)) || voices[0];
     if(pick) utt.voice = pick;
+    utt.onend = () => {
+      _stellarOrbPulse(false);
+      _stellarSetStatus('🌟', 'Tap 🎤 to reply', '');
+    };
     speechSynthesis.speak(utt);
-  } catch(e) {}
+  } catch(e) { _stellarOrbPulse(false); }
 }
 
-// ── STT (mic) ──
-let _stellarRecog = null;
-let _stellarMicOn = false;
-
+// ── STT: mic input ──
 function toggleStellarMic() {
-  if(_stellarMicOn) {
-    _stellarMicOn = false;
-    if(_stellarRecog) _stellarRecog.stop();
-    return;
-  }
+  if(_stellarMicOn) { _stellarMicOn=false; if(_stellarRecog) _stellarRecog.stop(); return; }
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if(!SR) { toast("Your browser doesn't support voice input"); return; }
-  speechSynthesis.cancel(); // stop Stellar speaking so mic doesn't pick it up
+  if(!SR) { toast("Voice not supported on this browser"); return; }
+  speechSynthesis.cancel();
   _stellarRecog = new SR();
   _stellarRecog.lang = 'en-US';
   _stellarRecog.interimResults = true;
   _stellarRecog.continuous = false;
   _stellarMicOn = true;
-
   const micBtn = document.getElementById('stellar-mic');
-  const status = document.getElementById('stellar-voice-status');
-  const inp    = document.getElementById('stellar-input');
-  if(micBtn) { micBtn.style.background='rgba(231,76,60,0.3)'; micBtn.style.borderColor='#e74c3c'; micBtn.textContent='🔴'; }
-  if(status) status.textContent = 'Listening… speak now';
-
+  if(micBtn) { micBtn.style.background='rgba(231,76,60,0.3)'; micBtn.style.border='2px solid #e74c3c'; micBtn.textContent='🔴'; }
+  _stellarSetStatus('👂', 'Listening…', 'Speak now…');
+  let interim = '';
   _stellarRecog.onresult = e => {
-    const transcript = Array.from(e.results).map(r=>r[0].transcript).join('');
-    if(inp) inp.value = transcript;
+    interim = Array.from(e.results).map(r=>r[0].transcript).join('');
+    _stellarSetStatus('👂', 'Listening…', interim);
     if(e.results[e.results.length-1].isFinal) {
       _stellarMicOff();
-      setTimeout(sendStellar, 200);
+      const kid = STATE.kids.find(k=>k.id===_stellarKidId); if(!kid) return;
+      _stellarHistory.push({ role:'user', content:interim });
+      setTimeout(()=>_stellarRespond(kid, interim), 150);
     }
   };
   _stellarRecog.onerror = () => _stellarMicOff();
   _stellarRecog.onend   = () => _stellarMicOff();
   _stellarRecog.start();
 }
-
 function _stellarMicOff() {
   _stellarMicOn = false;
   const micBtn = document.getElementById('stellar-mic');
-  const status = document.getElementById('stellar-voice-status');
-  if(micBtn) { micBtn.style.background='rgba(255,255,255,0.07)'; micBtn.style.borderColor='rgba(255,255,255,0.12)'; micBtn.textContent='🎤'; }
-  if(status) status.textContent='';
+  if(micBtn) { micBtn.style.background='rgba(255,255,255,0.08)'; micBtn.style.border='2px solid rgba(255,255,255,0.15)'; micBtn.textContent='🎤'; }
 }
-
-// Stop speech when chat closes
-const _origCloseStellar = closeStellar;
-closeStellar = function() {
-  speechSynthesis.cancel();
-  _stellarMicOff();
-  if(_stellarRecog) { try{ _stellarRecog.stop(); }catch(e){} }
-  _origCloseStellar();
-};
-window.closeStellar = closeStellar;
 window.toggleStellarMic = toggleStellarMic;
 window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryDay; window.historyAdjust=historyAdjust; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
@@ -3933,24 +3887,19 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
   </div>
 </div>
 
-<!-- Stellar AI Chat -->
-<div id="stellar-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeStellar()">
-  <div id="stellar-sheet" style="background:linear-gradient(160deg,#1a1a3e 0%,#0f0f1e 100%);border-radius:28px 28px 0 0;width:100%;max-width:520px;height:82vh;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(102,126,234,0.3)">
-    <div style="padding:1rem 1.2rem 0.6rem;display:flex;align-items:center;gap:0.75rem;border-bottom:1px solid rgba(255,255,255,0.08)">
-      <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;box-shadow:0 0 18px rgba(118,75,162,0.6)">🌟</div>
-      <div style="flex:1">
-        <div id="stellar-title" style="font-weight:800;font-size:1rem;color:#fff">Stellar</div>
-        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);letter-spacing:0.03em">Your personal AI coach · always cheering for you</div>
+<!-- Stellar Voice Bar (no darkened overlay — home screen stays visible) -->
+<div id="stellar-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:9000;padding:0 0 env(safe-area-inset-bottom)">
+  <div style="background:linear-gradient(160deg,#1a1a3e,#0f0f1e);border-radius:28px 28px 0 0;box-shadow:0 -6px 30px rgba(102,126,234,0.35);padding:1.1rem 1.2rem 1.3rem;max-width:520px;margin:0 auto">
+    <div style="display:flex;align-items:center;gap:0.85rem">
+      <div id="stellar-orb" style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:1.6rem;flex-shrink:0;box-shadow:0 0 0 0 rgba(102,126,234,0.5);transition:box-shadow 0.3s">🌟</div>
+      <div style="flex:1;min-width:0">
+        <div id="stellar-bar-name" style="font-weight:800;font-size:0.92rem;color:#fff;margin-bottom:0.15rem">Stellar</div>
+        <div id="stellar-bar-status" style="font-size:0.8rem;color:rgba(255,255,255,0.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Tap the mic to talk…</div>
       </div>
-      <button onclick="closeStellar()" style="background:rgba(255,255,255,0.07);border:none;border-radius:50%;width:32px;height:32px;color:rgba(255,255,255,0.5);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+      <button id="stellar-mic" onclick="toggleStellarMic()" style="width:52px;height:52px;border-radius:50%;background:rgba(255,255,255,0.08);border:2px solid rgba(255,255,255,0.15);font-size:1.5rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s">🎤</button>
+      <button onclick="closeStellar()" style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.06);border:none;color:rgba(255,255,255,0.4);font-size:1rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center">✕</button>
     </div>
-    <div id="stellar-messages" style="flex:1;overflow-y:auto;padding:1rem 1.1rem;display:flex;flex-direction:column;gap:0.65rem;scroll-behavior:smooth"></div>
-    <div style="padding:0.6rem 0.75rem;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:0.4rem;align-items:flex-end">
-      <button id="stellar-mic" onclick="toggleStellarMic()" title="Speak to Stellar" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:14px;width:44px;height:44px;color:rgba(255,255,255,0.6);font-size:1.25rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s">🎤</button>
-      <textarea id="stellar-input" placeholder="Ask Stellar anything…" rows="1" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:14px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.9rem;padding:0.6rem 0.85rem;resize:none;outline:none;max-height:100px;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStellar()}"></textarea>
-      <button id="stellar-send" onclick="sendStellar()" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:14px;width:44px;height:44px;color:#fff;font-size:1.2rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(102,126,234,0.4)">➤</button>
-    </div>
-    <div id="stellar-voice-status" style="text-align:center;font-size:0.72rem;color:rgba(255,255,255,0.35);padding:0 1rem 0.5rem;min-height:1.1em"></div>
+    <div id="stellar-subtitle" style="margin-top:0.7rem;font-size:0.82rem;color:rgba(255,255,255,0.65);line-height:1.5;min-height:1.2em;font-style:italic;text-align:center"></div>
   </div>
 </div>
 
