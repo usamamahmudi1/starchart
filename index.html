@@ -1474,7 +1474,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{} };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{} };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1615,7 +1615,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -1630,6 +1630,7 @@ function startListeners() {
       }
       if(docId === 'pending')  { STATE.pending  = data.requests || {}; }
       if(docId === 'spending') { STATE.spending = data.records  || {}; }
+      if(docId === 'bonuses')  { STATE.bonuses  = data.records  || {}; }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -1648,6 +1649,7 @@ async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ p
 async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls }); }
 async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
 async function saveSpending(s)    { STATE.spending=s;   await fbSet('spending', { records: s }); }
+async function saveBonuses(b)     { STATE.bonuses=b;    await fbSet('bonuses',  { records: b }); }
 
 function getData()  { return STATE; }
 function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels : DEFAULT_EMOJI_LEVELS; }
@@ -1750,7 +1752,7 @@ function renderKidsView() {
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
-      checkLevelUp(kid.id, pts);
+      checkLevelUp(kid.id, kid.name, pts);
       checkWalletUpdate(kid.id, pts);
     }
     const level = getEmoji(pts);
@@ -1819,10 +1821,11 @@ function renderKidsView() {
         const _wp  = getAllTimePtsForKid(kid.id, tasks);
         const _tp  = getTodayPtsForKid(kid.id, tasks);
         const _sp  = totalSpentKid(kid.id);
+        const _bn  = totalBonusKid(kid.id);
         const _wOre = (_wp * ORE_PER_PT).toFixed(1);
         const _wKr  = Math.round(_wp * KR_PER_PT);
         const _tOre = (_tp * ORE_PER_PT).toFixed(1);
-        const _rem  = Math.max(0, _wp * KR_PER_PT - _sp).toFixed(3);
+        const _rem  = Math.max(0, _wp * KR_PER_PT + _bn - _sp).toFixed(3);
         const _cn   = String(kid.id.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
         return `<div class="wallet-card" id="wallet-${kid.id}" onclick="openCardDetail('${kid.id}')">
           <div class="wc-inner">
@@ -2116,13 +2119,27 @@ function renderKidsTab() {
   const { kids } = getData();
   const list = document.getElementById('kids-list-parent');
   if(!kids.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>'; return; }
-  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.5rem">` + kids.map(k=>{
+  list.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.75rem">` + kids.map(k=>{
     const col = COLORS[k.color]||COLORS.pink;
-    return `<div style="display:flex;align-items:center;gap:0.75rem;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:0.6rem 0.9rem">
-      <span style="font-size:1.5rem">${k.emoji||'⭐'}</span>
-      <span style="color:${col.main};font-weight:700;flex:1">${escHtml(k.name)}</span>
-      <button class="btn btn-teal btn-sm" onclick="openKidEdit('${k.id}')">✏️ Edit</button>
-      <button class="btn btn-danger btn-sm" onclick="deleteKid('${k.id}')">Delete</button>
+    const bonuses = getBonusesForKid(k.id);
+    const totalBonus = bonuses.reduce((s,e)=>s+(e.kr||0),0);
+    const recentBonuses = bonuses.slice(-3).reverse();
+    return `<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:0.8rem 1rem">
+      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">
+        <span style="font-size:1.5rem">${k.emoji||'⭐'}</span>
+        <span style="color:${col.main};font-weight:700;flex:1">${escHtml(k.name)}</span>
+        <button class="btn btn-teal btn-sm" onclick="openKidEdit('${k.id}')">✏️ Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteKid('${k.id}')">Delete</button>
+      </div>
+      <div style="background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.2);border-radius:10px;padding:0.6rem 0.8rem">
+        <div style="font-size:0.75rem;font-weight:700;color:#FFD700;margin-bottom:0.4rem;letter-spacing:0.04em">🎁 BONUS COINS${totalBonus>0?' · '+totalBonus.toFixed(2)+' kr total':''}</div>
+        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+          <input id="bonus-amt-${k.id}" type="number" min="0.01" step="0.01" placeholder="kr amount" style="width:90px;padding:0.3rem 0.5rem;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;font-size:0.82rem">
+          <input id="bonus-desc-${k.id}" type="text" placeholder="reason (optional)" style="flex:1;min-width:100px;padding:0.3rem 0.5rem;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;font-size:0.82rem">
+          <button class="btn btn-sm" style="background:#FFD700;color:#1a1a2e;font-weight:700" onclick="addBonusKr('${k.id}')">+ Add</button>
+        </div>
+        ${recentBonuses.length?`<div style="margin-top:0.4rem;display:flex;flex-direction:column;gap:0.15rem">${recentBonuses.map(b=>`<div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">+${(b.kr||0).toFixed(2)} kr${b.reason?' · '+escHtml(b.reason):''} <span style="opacity:0.4">${b.date||''}</span></div>`).join('')}</div>`:''}
+      </div>
     </div>`;
   }).join('') + '</div>';
 }
@@ -2736,7 +2753,7 @@ async function animateCoinsToWallet(kidId, gained, todayPts) {
   const dispWeekKr  = Math.round(finalPts * KR_PER_PT);
   const dispTodayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const spent = totalSpentKid(kidId);
-  const remaining = Math.max(0, finalPts*KR_PER_PT - spent);
+  const remaining = Math.max(0, finalPts*KR_PER_PT + totalBonusKid(kidId) - spent);
 
   if(walletOreEl) { walletOreEl.textContent = dispWeekOre+' öre'; walletOreEl.classList.remove('bump'); void walletOreEl.offsetWidth; walletOreEl.classList.add('bump'); }
   if(walletKrEl)  { walletKrEl.textContent  = dispWeekKr+' kr';  walletKrEl.classList.remove('bump');  void walletKrEl.offsetWidth;  walletKrEl.classList.add('bump'); }
@@ -2916,6 +2933,28 @@ function getSpendingForKid(kidId) {
 function totalSpentKid(kidId) {
   return getSpendingForKid(kidId).reduce((s,e)=>s+(e.kr||0),0);
 }
+function getBonusesForKid(kidId) {
+  return ((STATE.bonuses||{})[kidId]||[]);
+}
+function totalBonusKid(kidId) {
+  return getBonusesForKid(kidId).reduce((s,e)=>s+(e.kr||0),0);
+}
+async function addBonusKr(kidId) {
+  const amtEl  = document.getElementById('bonus-amt-'+kidId);
+  const descEl = document.getElementById('bonus-desc-'+kidId);
+  const kr   = parseFloat(amtEl ? amtEl.value : 0);
+  const desc = descEl ? descEl.value.trim() : '';
+  if(!kr || kr <= 0) { toast('Enter a valid bonus amount!'); return; }
+  const bonuses = JSON.parse(JSON.stringify(STATE.bonuses||{}));
+  if(!bonuses[kidId]) bonuses[kidId]=[];
+  bonuses[kidId].push({ kr, reason: desc||'', date: todayKey() });
+  await saveBonuses(bonuses);
+  if(amtEl)  amtEl.value  = '';
+  if(descEl) descEl.value = '';
+  toast('🎁 Bonus added!');
+  renderKidsTab();
+}
+window.addBonusKr = addBonusKr;
 
 async function recordSpending(kidId) {
   const amtEl  = document.getElementById('spend-amt-'+kidId);
@@ -2939,13 +2978,14 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
       fbGet('settings',{ pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS }),
       fbGet('pending',  { requests:{} }),
       fbGet('spending', { records:{} }),
+      fbGet('bonuses',  { records:{} }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -2954,6 +2994,7 @@ async function init() {
     STATE.levels = settingsData.levels || DEFAULT_EMOJI_LEVELS;
     STATE.pending  = pendingData.requests  || {};
     STATE.spending = spendingData.records  || {};
+    STATE.bonuses  = bonusesData.records   || {};
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -2975,17 +3016,17 @@ async function init() {
 // ── Level tracking: remember each kid's current level to detect level-up ──
 const _kidLevelCache = {}; // kidId -> levelMin
 
-function checkLevelUp(kidId, newPts) {
+function checkLevelUp(kidId, kidName, newPts) {
   const newLevel = getEmoji(newPts);
   const prev = _kidLevelCache[kidId];
   _kidLevelCache[kidId] = newLevel.min;
   // Only fire if prev was set (not first load) and level actually increased
   if(prev !== undefined && newLevel.min > prev) {
-    triggerCelebration(newLevel);
+    triggerCelebration(newLevel, kidName);
   }
 }
 
-function triggerCelebration(level) {
+function triggerCelebration(level, kidName) {
   // Chime sound (Web Audio API — no external file needed)
   try {
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
@@ -3054,14 +3095,27 @@ function triggerCelebration(level) {
   banner.classList.add('show');
   setTimeout(()=>banner.classList.remove('show'), 3500);
 
-  // Voice announcement
+  // Voice announcement — enthusiastic, uses kid's first name
   try {
-    const msg = new SpeechSynthesisUtterance(`Level up! You reached ${level.label}! Amazing job!`);
-    msg.rate = 0.9;
-    msg.pitch = 1.2;
-    msg.volume = 1;
-    // Delay slightly so it plays after the chime
-    setTimeout(() => speechSynthesis.speak(msg), 800);
+    const firstName = (kidName||'').split(' ')[0] || 'Champion';
+    const phrases = [
+      `Woooohooo! ${firstName}! You just leveled up to ${level.label}! That is absolutely incredible! You are on FIRE!`,
+      `OH YEAH! ${firstName} reached ${level.label}! Amazing, amazing, AMAZING! Keep going superstar!`,
+      `YES YES YES! ${firstName}, you did it! Level ${level.label} is yours! The crowd goes WILD!`,
+    ];
+    const text = phrases[Math.floor(Math.random()*phrases.length)];
+    speechSynthesis.cancel();
+    setTimeout(() => {
+      const msg = new SpeechSynthesisUtterance(text);
+      msg.rate  = 1.15;
+      msg.pitch = 1.4;
+      msg.volume = 1;
+      // Try to pick an upbeat/female voice if available
+      const voices = speechSynthesis.getVoices();
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Victoria|Zira/i.test(v.name)) || voices[0];
+      if(pick) msg.voice = pick;
+      speechSynthesis.speak(msg);
+    }, 800);
   } catch(e) {}
 }
 
@@ -3167,19 +3221,25 @@ function openCardDetail(kidId) {
   const allPts   = getAllTimePtsForKid(kidId, tasks);
   const todayPts = getTodayPtsForKid(kidId, tasks);
   const spent    = totalSpentKid(kidId);
-  const remaining = Math.max(0, allPts * KR_PER_PT - spent);
+  const bonus    = totalBonusKid(kidId);
+  const remaining = Math.max(0, allPts * KR_PER_PT + bonus - spent);
   const weekOre  = (allPts  * ORE_PER_PT).toFixed(1);
-  const weekKr   = Math.round(allPts  * KR_PER_PT);
+  const weekKr   = Math.round(allPts  * KR_PER_PT + bonus);
   const todayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const todayKr  = Math.round(todayPts * KR_PER_PT);
   const spendList = getSpendingForKid(kidId).slice().reverse();
+  const bonusList = getBonusesForKid(kidId).slice().reverse();
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
   const remClass = remaining < 0 ? 'red' : 'teal';
-  const txnHtml  = spendList.length
-    ? spendList.map(e=>`<div class="cd-txn-row">
-        <span class="cd-txn-date">${e.date||''}</span>
-        <span class="cd-txn-desc">${escHtml(e.desc||'Spent')}</span>
-        <span class="cd-txn-amt">−${(e.kr||0).toFixed(2)} kr</span>
+  const allTxns = [
+    ...spendList.map(e=>({ date:e.date||'', desc:e.desc||'Spent', amt:-(e.kr||0), color:'' })),
+    ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0), color:'#2ecc71' })),
+  ].sort((a,b)=>(b.date>a.date?1:b.date<a.date?-1:0));
+  const txnHtml  = allTxns.length
+    ? allTxns.map(e=>`<div class="cd-txn-row">
+        <span class="cd-txn-date">${e.date}</span>
+        <span class="cd-txn-desc">${escHtml(e.desc)}</span>
+        <span class="cd-txn-amt" style="${e.amt>0?'color:#2ecc71':''}">${e.amt>0?'+':''}${e.amt.toFixed(2)} kr</span>
       </div>`).join('')
     : '<div style="opacity:0.4;font-size:0.85rem;padding:0.5rem 0">No transactions yet</div>';
   const overlay = document.getElementById('card-detail-overlay');
