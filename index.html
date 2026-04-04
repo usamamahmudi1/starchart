@@ -2492,7 +2492,7 @@ async function rejectTask(kidId, taskId) {
 }
 
 function approveDeedBtn(btn) {
-  const ptsInput = document.getElementById(btn.dataset.inp);
+  const ptsInput = document.getElementById('deed-pts-' + btn.dataset.inp);
   const pts = parseInt(ptsInput ? ptsInput.value : 0);
   if(!pts || pts < 1) { toast('Set the points first!'); if(ptsInput) ptsInput.focus(); return; }
   approveDeed(btn.dataset.kid, btn.dataset.key, ptsInput);
