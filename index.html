@@ -1579,16 +1579,21 @@ function renderApprovalsTab() {
       if(taskId.startsWith('deed:')) {
         const parts = taskId.split(':');
         const deedDesc = parts.slice(2).join(':');
-        const safeKey = encodeURIComponent(taskId);
+        // Use a numeric index as safe DOM id to avoid apostrophe/special-char issues in onclick
+        const deedIdx = `${kid.id}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
         return `<div class="approval-task-row" style="border:1px dashed rgba(255,215,0,0.3);background:rgba(255,215,0,0.05)">
           <div style="flex:1">
             <div class="approval-task-name">✨ ${escHtml(deedDesc)}</div>
             <div style="font-size:0.75rem;opacity:0.5;margin-top:2px">New good deed — set points to approve</div>
           </div>
-          <input class="form-input" id="deed-pts-${safeKey}" type="number" min="1" placeholder="pts"
+          <input class="form-input" id="deed-pts-${deedIdx}" type="number" min="1" placeholder="pts"
             style="width:60px;text-align:center;padding:0.3rem 0.4rem;font-size:0.85rem">
-          <button class="btn btn-approve btn-sm" onclick="approveDeed('${kid.id}','${encodeURIComponent(taskId)}')">✓ Approve</button>
-          <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${encodeURIComponent(taskId)}')">✗ Reject</button>
+          <button class="btn btn-approve btn-sm"
+            data-kid="${escHtml(kid.id)}" data-key="${escHtml(encodeURIComponent(taskId))}" data-inp="${deedIdx}"
+            onclick="approveDeedBtn(this)">✓ Approve</button>
+          <button class="btn btn-reject btn-sm"
+            data-kid="${escHtml(kid.id)}" data-key="${escHtml(encodeURIComponent(taskId))}"
+            onclick="rejectDeedBtn(this)">✗ Reject</button>
         </div>`;
       }
       const task = tasks.find(t=>t.id===taskId);
@@ -2486,10 +2491,19 @@ async function rejectTask(kidId, taskId) {
   toast('Request rejected.');
 }
 
-async function approveDeed(kidId, encodedKey) {
+function approveDeedBtn(btn) {
+  const ptsInput = document.getElementById(btn.dataset.inp);
+  const pts = parseInt(ptsInput ? ptsInput.value : 0);
+  if(!pts || pts < 1) { toast('Set the points first!'); if(ptsInput) ptsInput.focus(); return; }
+  approveDeed(btn.dataset.kid, btn.dataset.key, ptsInput);
+}
+function rejectDeedBtn(btn) {
+  rejectTask(btn.dataset.kid, btn.dataset.key);
+}
+
+async function approveDeed(kidId, encodedKey, ptsInputEl) {
   const taskId = decodeURIComponent(encodedKey);
-  const safeKey = encodedKey;
-  const ptsInput = document.getElementById('deed-pts-'+safeKey);
+  const ptsInput = ptsInputEl || null;
   const pts = parseInt(ptsInput ? ptsInput.value : 0);
   if(!pts || pts < 1) { toast('Set the points first!'); if(ptsInput) ptsInput.focus(); return; }
   // Create a one-off task entry in done using a synthetic task ID
@@ -3464,7 +3478,7 @@ window.openCardDetail=openCardDetail; window.closeCardDetail=closeCardDetail;
 window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePhotoUpload;
 window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab; window.toggleKhDay=toggleKhDay;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
-window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed;
+window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryDay; window.historyAdjust=historyAdjust; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
