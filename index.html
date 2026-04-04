@@ -1684,8 +1684,9 @@ function startListeners() {
       if(docId === 'tasks')    { STATE.tasks   = data.list     || []; }
       if(docId === 'done')     { STATE.done    = data.days     || {}; }
       if(docId === 'settings') {
-        STATE.pw     = data.pw     || DEFAULT_PW;
-        STATE.levels = data.levels || DEFAULT_EMOJI_LEVELS;
+        STATE.pw         = data.pw         || DEFAULT_PW;
+        STATE.levels     = data.levels     || DEFAULT_EMOJI_LEVELS;
+        STATE.stellarKey = data.stellarKey || '';
       }
       if(docId === 'pending')  { STATE.pending  = data.requests || {}; }
       if(docId === 'spending') { STATE.spending = data.records  || {}; }
@@ -1704,8 +1705,9 @@ function startListeners() {
 async function saveKids(kids)    { STATE.kids=kids;   await fbSet('kids',    { list: kids }); }
 async function saveTasks(tasks)  { STATE.tasks=tasks; await fbSet('tasks',   { list: tasks }); }
 async function saveDone(done)    { STATE.done=done;   await fbSet('done',    { days: done }); }
-async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ pw, levels: STATE.levels }); }
-async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls }); }
+async function savePw(pw)        { STATE.pw=pw;       await fbSet('settings',{ pw, levels: STATE.levels, stellarKey: STATE.stellarKey||'' }); }
+async function saveLevels(lvls)  { STATE.levels=lvls; await fbSet('settings',{ pw: STATE.pw, levels: lvls, stellarKey: STATE.stellarKey||'' }); }
+async function saveStellarKeyFb(key) { STATE.stellarKey=key; await fbSet('settings',{ pw: STATE.pw, levels: STATE.levels, stellarKey: key }); }
 async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
 async function saveSpending(s)    { STATE.spending=s;   await fbSet('spending', { records: s }); }
 async function saveBonuses(b)     { STATE.bonuses=b;    await fbSet('bonuses',  { records: b }); }
@@ -3267,8 +3269,9 @@ async function init() {
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
     STATE.done   = doneData.days   || {};
-    STATE.pw     = settingsData.pw     || DEFAULT_PW;
-    STATE.levels = settingsData.levels || DEFAULT_EMOJI_LEVELS;
+    STATE.pw         = settingsData.pw         || DEFAULT_PW;
+    STATE.levels     = settingsData.levels     || DEFAULT_EMOJI_LEVELS;
+    STATE.stellarKey = settingsData.stellarKey || '';
     STATE.pending  = pendingData.requests  || {};
     STATE.spending = spendingData.records  || {};
     STATE.bonuses  = bonusesData.records   || {};
@@ -3623,20 +3626,19 @@ window.approveTask=approveTask; window.recordSpending=recordSpending; window.rej
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 
 // ============ STELLAR AI COACH ============
-function getStellarKey() { return localStorage.getItem('stellar_api_key')||''; }
-function saveStellarKey() {
+function getStellarKey() { return STATE.stellarKey||''; }
+async function saveStellarKey() {
   const v = document.getElementById('stellar-api-key').value.trim();
   if(!v) { toast('Paste your API key first'); return; }
-  localStorage.setItem('stellar_api_key', v);
-  document.getElementById('stellar-key-msg').textContent='✓ Key saved on this device';
-  document.getElementById('stellar-key-msg').style.color='#2ecc71';
-  setTimeout(()=>{ const m=document.getElementById('stellar-key-msg'); if(m) m.textContent=''; },3000);
+  await saveStellarKeyFb(v);
+  const m = document.getElementById('stellar-key-msg');
+  if(m) { m.style.color='#2ecc71'; m.textContent='✓ Key saved — works on all devices now'; setTimeout(()=>{ if(m) m.textContent=''; },3000); }
 }
-function clearStellarKey() {
-  localStorage.removeItem('stellar_api_key');
+async function clearStellarKey() {
+  await saveStellarKeyFb('');
   document.getElementById('stellar-api-key').value='';
-  document.getElementById('stellar-key-msg').textContent='Key cleared.';
-  document.getElementById('stellar-key-msg').style.color='rgba(255,255,255,0.4)';
+  const m = document.getElementById('stellar-key-msg');
+  if(m) { m.style.color='rgba(255,255,255,0.4)'; m.textContent='Key cleared.'; }
 }
 window.saveStellarKey=saveStellarKey; window.clearStellarKey=clearStellarKey;
 
@@ -3644,9 +3646,8 @@ window.saveStellarKey=saveStellarKey; window.clearStellarKey=clearStellarKey;
 const _origRenderLevels = renderLevelsEditor;
 // Populate stellar key field when settings opens
 function _stellarSettingsInit() {
-  const k = getStellarKey();
   const el = document.getElementById('stellar-api-key');
-  if(el && k) el.value = k;
+  if(el) el.value = STATE.stellarKey||'';
 }
 
 let _stellarKidId = null;
