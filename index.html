@@ -1399,6 +1399,22 @@
             <button class="btn btn-danger btn-sm" onclick="resetDay()">Reset Day</button>
           </div>
         </div>
+        <!-- STELLAR AI COACH KEY -->
+        <div class="p-card">
+          <div class="settings-row">
+            <div>
+              <div class="settings-label">🌟 Stellar AI Coach — API Key</div>
+              <div class="settings-sub">Enter your Anthropic API key to enable the AI coach on each kid's card. Stored only on this device.</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+            <input class="form-input" id="stellar-api-key" type="password" placeholder="sk-ant-..." style="flex:1;font-family:monospace;font-size:0.8rem">
+            <button class="btn btn-gold btn-sm" onclick="saveStellarKey()">Save</button>
+            <button class="btn btn-sm" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="clearStellarKey()">Clear</button>
+          </div>
+          <div id="stellar-key-msg" style="margin-top:0.4rem;font-size:0.78rem;min-height:1em"></div>
+        </div>
+
         <!-- APPRECIATION LEVELS -->
         <div class="p-card">
           <div class="section-title" style="margin-bottom:0.75rem">🏅 Appreciation Levels</div>
@@ -1903,6 +1919,7 @@ function renderKidsView() {
       })()}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:0.75rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
+      <button class="stellar-btn" onclick="openStellar('${kid.id}')" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:14px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.9rem;font-weight:800;padding:0.6rem 1rem;width:100%;cursor:pointer;margin-top:0.4rem;letter-spacing:0.02em;box-shadow:0 4px 20px rgba(102,126,234,0.45);transition:all 0.2s" onmousedown="this.style.transform='scale(0.97)'" onmouseup="this.style.transform=''">🌟 Chat with Stellar</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
@@ -2655,6 +2672,7 @@ function openKidEdit(id) {
   document.getElementById('kid-edit-name').value  = k.name;
   document.getElementById('kid-edit-emoji').value = k.emoji||'⭐';
   document.getElementById('kid-edit-color').value = k.color||'pink';
+  document.getElementById('kid-edit-age').value   = k.age||'';
   document.getElementById('kid-edit-overlay').style.display='flex';
 }
 function closeKidEdit() { document.getElementById('kid-edit-overlay').style.display='none'; }
@@ -2664,9 +2682,10 @@ async function saveKidEdit() {
   const emoji = document.getElementById('kid-edit-emoji').value.trim()||'⭐';
   const color = document.getElementById('kid-edit-color').value;
   if(!name){ toast('Name cannot be empty!'); return; }
+  const age = parseInt(document.getElementById('kid-edit-age').value)||null;
   const kids = JSON.parse(JSON.stringify(STATE.kids));
   const k = kids.find(k=>k.id===id); if(!k) return;
-  k.name=name; k.emoji=emoji; k.color=color;
+  k.name=name; k.emoji=emoji; k.color=color; if(age) k.age=age; else delete k.age;
   await saveKids(kids);
   closeKidEdit();
   toast(emoji+' '+name+' updated!');
@@ -2884,7 +2903,7 @@ function switchTab(name, btn) {
   if(name==='approvals') renderApprovalsTab();
   if(name==='tasks')     renderTasksTab();
   if(name==='kids')      renderKidsTab();
-  if(name==='settings')  { renderLevelsEditor(); previewFormula(); }
+  if(name==='settings')  { renderLevelsEditor(); previewFormula(); _stellarSettingsInit(); }
   if(name==='history')   renderHistoryTab();
   if(name==='money')     renderMoneyTab();
 }
@@ -3602,6 +3621,177 @@ window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
+
+// ============ STELLAR AI COACH ============
+function getStellarKey() { return localStorage.getItem('stellar_api_key')||''; }
+function saveStellarKey() {
+  const v = document.getElementById('stellar-api-key').value.trim();
+  if(!v) { toast('Paste your API key first'); return; }
+  localStorage.setItem('stellar_api_key', v);
+  document.getElementById('stellar-key-msg').textContent='✓ Key saved on this device';
+  document.getElementById('stellar-key-msg').style.color='#2ecc71';
+  setTimeout(()=>{ const m=document.getElementById('stellar-key-msg'); if(m) m.textContent=''; },3000);
+}
+function clearStellarKey() {
+  localStorage.removeItem('stellar_api_key');
+  document.getElementById('stellar-api-key').value='';
+  document.getElementById('stellar-key-msg').textContent='Key cleared.';
+  document.getElementById('stellar-key-msg').style.color='rgba(255,255,255,0.4)';
+}
+window.saveStellarKey=saveStellarKey; window.clearStellarKey=clearStellarKey;
+
+// On settings tab open, show masked key status
+const _origRenderLevels = renderLevelsEditor;
+// Populate stellar key field when settings opens
+function _stellarSettingsInit() {
+  const k = getStellarKey();
+  const el = document.getElementById('stellar-api-key');
+  if(el && k) el.value = k;
+}
+
+let _stellarKidId = null;
+let _stellarHistory = []; // {role, content}
+
+function _buildStellarSystemPrompt(kid) {
+  const { tasks } = getData();
+  const todayDone = (STATE.done[todayKey()])||{};
+  const kidDone   = todayDone[kid.id]||{};
+  const pending   = (STATE.pending||{})[kid.id]||{};
+  const allPts    = getAllTimePtsForKid(kid.id, tasks);
+  const todayPts  = getTodayPtsForKid(kid.id, tasks);
+  const level     = getEmoji(todayPts);
+
+  const done=[], notDone=[], pendingList=[];
+  tasks.forEach(t=>{
+    const cnt=(kidDone[t.id]||0);
+    const pend=(pending[t.id]||0);
+    if(cnt>0) done.push(`${t.name} (${cnt>1?'×'+cnt+', ':''}+${cnt*t.points}pts)`);
+    else if(pend>0) pendingList.push(`${t.name} — waiting for approval`);
+    else notDone.push(`${t.name} (+${t.points}pts)`);
+  });
+  const xdeeds=((todayDone.xdeeds||{})[kid.id]||[]);
+  xdeeds.forEach(d=>done.push(`✨ ${d.desc} (+${d.pts}pts)`));
+
+  const hour = new Date().getHours();
+  const timeOfDay = hour<12?'morning':hour<17?'afternoon':hour<20?'evening':'night';
+  const age = kid.age ? `${kid.age} years old` : 'age unknown';
+
+  return `You are Stellar — a warm, energetic, and encouraging AI coach for a child named ${kid.name} (${age}).
+You speak directly to ${kid.name} in a fun, age-appropriate, motivating way. Keep every reply to 2-4 short sentences max. Use emojis occasionally. Never be robotic.
+
+Current snapshot:
+- Time of day: ${timeOfDay}
+- Level: ${level.emoji} ${level.label} (${todayPts} pts today, ${allPts} pts all-time)
+- Tasks DONE today: ${done.length?done.join('; '):'none yet'}
+- Tasks PENDING approval: ${pendingList.length?pendingList.join('; '):'none'}
+- Tasks NOT done yet: ${notDone.length?notDone.join('; '):'all done!'}
+
+Your goal: motivate ${kid.name} to earn more points, celebrate what they've done, and suggest activities fitting the ${timeOfDay}. If all tasks are done, celebrate massively and suggest a bonus challenge. If it's evening or night, encourage winding down with calm helpful tasks.`;
+}
+
+function _stellarBubble(role, text, typing=false) {
+  const msgs = document.getElementById('stellar-messages');
+  if(!msgs) return null;
+  const isBot = role==='assistant';
+  const div = document.createElement('div');
+  div.style.cssText=`display:flex;justify-content:${isBot?'flex-start':'flex-end'}`;
+  const bubble = document.createElement('div');
+  bubble.style.cssText=`max-width:82%;padding:0.6rem 0.9rem;border-radius:${isBot?'6px 18px 18px 18px':'18px 6px 18px 18px'};font-size:0.88rem;line-height:1.5;font-family:'Nunito',sans-serif;${isBot?'background:rgba(102,126,234,0.18);color:#e8e8ff;border:1px solid rgba(102,126,234,0.25)':'background:linear-gradient(135deg,#667eea,#764ba2);color:#fff'}`;
+  bubble.textContent = typing ? '…' : text;
+  if(typing) bubble.id='stellar-typing';
+  div.appendChild(bubble);
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return bubble;
+}
+
+async function openStellar(kidId) {
+  const key = getStellarKey();
+  if(!key) {
+    toast('Ask a parent to add the Stellar API key in Settings ⚙️');
+    return;
+  }
+  _stellarKidId = kidId;
+  _stellarHistory = [];
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  if(!kid) return;
+
+  const overlay = document.getElementById('stellar-overlay');
+  const title   = document.getElementById('stellar-title');
+  const msgs    = document.getElementById('stellar-messages');
+  if(title) title.textContent = `Stellar · ${kid.name}`;
+  if(msgs)  msgs.innerHTML = '';
+  overlay.style.display = 'flex';
+  setTimeout(()=>{ const inp=document.getElementById('stellar-input'); if(inp) inp.focus(); },300);
+
+  // Opening message from Stellar
+  await _stellarRespond(kid, null);
+}
+window.openStellar=openStellar;
+
+function closeStellar() {
+  document.getElementById('stellar-overlay').style.display='none';
+  _stellarKidId=null; _stellarHistory=[];
+}
+window.closeStellar=closeStellar;
+
+async function sendStellar() {
+  const inp = document.getElementById('stellar-input');
+  const text = (inp ? inp.value : '').trim();
+  if(!text || !_stellarKidId) return;
+  inp.value='';
+  inp.style.height='';
+  const kid = STATE.kids.find(k=>k.id===_stellarKidId);
+  if(!kid) return;
+  _stellarBubble('user', text);
+  _stellarHistory.push({ role:'user', content:text });
+  await _stellarRespond(kid, text);
+}
+window.sendStellar=sendStellar;
+
+async function _stellarRespond(kid, userMsg) {
+  const key = getStellarKey();
+  const sendBtn = document.getElementById('stellar-send');
+  if(sendBtn) sendBtn.disabled=true;
+
+  const typingBubble = _stellarBubble('assistant','',true);
+  try {
+    const messages = userMsg===null
+      ? [{ role:'user', content:`Hi Stellar! I'm ${kid.name}. How am I doing today?` }]
+      : _stellarHistory.slice(-12); // keep last 12 turns for context
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 256,
+        system: _buildStellarSystemPrompt(kid),
+        messages,
+      })
+    });
+    if(!res.ok) {
+      const err = await res.json().catch(()=>({error:{message:'API error'}}));
+      throw new Error(err?.error?.message||'API error '+res.status);
+    }
+    const data = await res.json();
+    const reply = data.content?.[0]?.text || '…';
+    if(typingBubble) typingBubble.textContent = reply;
+    _stellarHistory.push({ role:'assistant', content:reply });
+    if(userMsg===null) _stellarHistory.unshift({ role:'user', content:`Hi Stellar! I'm ${kid.name}. How am I doing today?` });
+  } catch(e) {
+    if(typingBubble) { typingBubble.textContent='Oops! '+e.message; typingBubble.style.color='#e74c3c'; }
+  } finally {
+    if(sendBtn) sendBtn.disabled=false;
+    const msgs=document.getElementById('stellar-messages');
+    if(msgs) msgs.scrollTop=msgs.scrollHeight;
+  }
+}
 window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryDay; window.historyAdjust=historyAdjust; window.updatePendingBadge=updatePendingBadge; window.renderApprovalsTab=renderApprovalsTab;
 </script>
 
@@ -3637,6 +3827,10 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
       <label class="form-label">Avatar Emoji</label>
       <input class="form-input" id="kid-edit-emoji" placeholder="e.g. 🦄" style="width:100px">
     </div>
+    <div class="form-group" style="margin-bottom:0.75rem">
+      <label class="form-label">Age (for AI coach)</label>
+      <input class="form-input" id="kid-edit-age" type="number" min="1" max="18" placeholder="e.g. 8" style="width:100px">
+    </div>
     <div class="form-group" style="margin-bottom:1rem">
       <label class="form-label">Color Theme</label>
       <select class="form-input" id="kid-edit-color" style="width:160px">
@@ -3650,6 +3844,25 @@ window.renderHistoryTab=renderHistoryTab; window.toggleHistoryDay=toggleHistoryD
     <div style="display:flex;gap:0.75rem">
       <button class="btn btn-gold" style="flex:1" onclick="saveKidEdit()">💾 Save</button>
       <button class="btn" style="background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.15)" onclick="closeKidEdit()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stellar AI Chat -->
+<div id="stellar-overlay" style="display:none;position:fixed;inset:0;z-index:9000;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);align-items:flex-end;justify-content:center" onclick="if(event.target===this)closeStellar()">
+  <div id="stellar-sheet" style="background:linear-gradient(160deg,#1a1a3e 0%,#0f0f1e 100%);border-radius:28px 28px 0 0;width:100%;max-width:520px;height:82vh;display:flex;flex-direction:column;box-shadow:0 -8px 40px rgba(102,126,234,0.3)">
+    <div style="padding:1rem 1.2rem 0.6rem;display:flex;align-items:center;gap:0.75rem;border-bottom:1px solid rgba(255,255,255,0.08)">
+      <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:1.4rem;flex-shrink:0;box-shadow:0 0 18px rgba(118,75,162,0.6)">🌟</div>
+      <div style="flex:1">
+        <div id="stellar-title" style="font-weight:800;font-size:1rem;color:#fff">Stellar</div>
+        <div style="font-size:0.72rem;color:rgba(255,255,255,0.45);letter-spacing:0.03em">Your personal AI coach · always cheering for you</div>
+      </div>
+      <button onclick="closeStellar()" style="background:rgba(255,255,255,0.07);border:none;border-radius:50%;width:32px;height:32px;color:rgba(255,255,255,0.5);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center">✕</button>
+    </div>
+    <div id="stellar-messages" style="flex:1;overflow-y:auto;padding:1rem 1.1rem;display:flex;flex-direction:column;gap:0.65rem;scroll-behavior:smooth"></div>
+    <div style="padding:0.75rem 1rem;border-top:1px solid rgba(255,255,255,0.07);display:flex;gap:0.5rem;align-items:flex-end">
+      <textarea id="stellar-input" placeholder="Ask Stellar anything…" rows="1" style="flex:1;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:14px;color:#fff;font-family:'Nunito',sans-serif;font-size:0.9rem;padding:0.6rem 0.85rem;resize:none;outline:none;max-height:100px;line-height:1.4" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendStellar()}"></textarea>
+      <button id="stellar-send" onclick="sendStellar()" style="background:linear-gradient(135deg,#667eea,#764ba2);border:none;border-radius:14px;width:44px;height:44px;color:#fff;font-size:1.2rem;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(102,126,234,0.4)">➤</button>
     </div>
   </div>
 </div>
