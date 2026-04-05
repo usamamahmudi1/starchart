@@ -1809,7 +1809,7 @@ function renderKidsView() {
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdjKV = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
-    pts = Math.max(0, pts + (kidAdjKV.bonus||0) - (kidAdjKV.penalty||0));
+    pts = Math.max(0, pts + (kidAdjKV.bonus||0) - (kidAdjKV.penalty||0) + getXBonusPts(todayDone, kid.id));
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
@@ -1974,7 +1974,7 @@ function renderMarkTab() {
     const kidDeeds = ((todayDone.xdeeds||{})[kid.id]||[]);
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdj2 = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
-    pts = Math.max(0, pts + (kidAdj2.bonus||0) - (kidAdj2.penalty||0));
+    pts = Math.max(0, pts + (kidAdj2.bonus||0) - (kidAdj2.penalty||0) + getXBonusPts(todayDone, kid.id));
     const col   = COLORS[kid.color]||COLORS.pink;
     const level = getEmoji(pts);
     const counters = tasks.map(t => {
@@ -1998,6 +1998,7 @@ function renderMarkTab() {
     }).join('');
     // Load today's bonus/penalty for this kid
     const kidAdj = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
+    const deedListHtml = renderDeedList(kid.id, tk);
     return `<div class="kid-mark-card">
       <div class="kid-mark-name">
         <span>${kid.emoji||'⭐'}</span>
@@ -2005,6 +2006,7 @@ function renderMarkTab() {
         <span style="margin-left:auto;font-size:0.9rem;opacity:0.7" id="pts-badge-${kid.id}">${level.emoji} ${pts}pts</span>
       </div>
       ${counters}
+      ${deedListHtml}
       <div class="bonus-penalty-wrap">
         <div class="bonus-box" style="background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.25)">
           <div class="bonus-box-icon">💸</div>
@@ -2018,16 +2020,20 @@ function renderMarkTab() {
             <button class="btn btn-sm" style="background:rgba(78,205,196,0.2);border:1px solid rgba(78,205,196,0.4);color:#4ECDC4" onclick="recordSpending('${kid.id}')">💸 Record</button>
           </div>
         </div>
-        <div class="bonus-box positive">
-          <div class="bonus-box-icon">🌟</div>
-          <div class="bonus-box-body">
-            <div class="bonus-box-title">Bonus Points</div>
-            <div class="bonus-box-sub">Something great they did!</div>
+        <div class="bonus-box positive" style="flex-direction:column;align-items:stretch;gap:0.5rem">
+          <div style="display:flex;align-items:center;gap:0.5rem">
+            <div class="bonus-box-icon">🌟</div>
+            <div class="bonus-box-body" style="flex:1">
+              <div class="bonus-box-title">Bonus Points</div>
+              <div class="bonus-box-sub">Add multiple — each entry saved separately</div>
+            </div>
           </div>
-          <div class="bonus-controls">
-            <input class="bonus-input" type="number" min="0" id="bonus-${kid.id}" value="${kidAdj.bonus||0}" placeholder="0">
-            <button class="btn btn-approve btn-sm" onclick="applyAdjustment('${kid.id}','bonus')">+ Add</button>
+          <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
+            <input class="bonus-input" type="number" min="1" id="bonus-pts-${kid.id}" placeholder="pts" style="width:60px">
+            <input class="bonus-input" id="bonus-reason-${kid.id}" placeholder="reason (optional)" style="flex:1;min-width:80px;font-size:0.75rem">
+            <button class="btn btn-approve btn-sm" onclick="addXBonus('${kid.id}')">+ Add</button>
           </div>
+          <div id="xbonus-list-${kid.id}">${renderXBonusList(kid.id, tk)}</div>
         </div>
         <div class="bonus-box negative">
           <div class="bonus-box-icon">😕</div>
@@ -2104,6 +2110,132 @@ async function applyAdjustment(kidId, type) {
   const kid = STATE.kids.find(k=>k.id===kidId);
   if(type==='bonus')   toast((kid?kid.emoji+' ':'')+'+'+val+' bonus pts added! 🌟');
   else                 toast((kid?kid.emoji+' ':'')+'−'+val+' penalty applied 😕');
+}
+
+// ── xbonuses helpers ──
+function getXBonusPts(dayDone, kidId) {
+  return ((dayDone.xbonuses||{})[kidId]||[]).reduce((s,e)=>s+(e.pts||0),0);
+}
+
+function renderXBonusList(kidId, day) {
+  const entries = ((( STATE.done[day]||{}).xbonuses)||{})[kidId]||[];
+  if(!entries.length) return '';
+  return `<div style="margin-top:0.35rem;display:flex;flex-direction:column;gap:0.25rem">`+
+    entries.map((e,i)=>`<div id="xbonus-row-${kidId}-${i}" style="display:flex;align-items:center;gap:0.4rem;background:rgba(46,204,113,0.07);border-radius:8px;padding:0.3rem 0.5rem;font-size:0.78rem">
+      <span style="color:#2ecc71;font-weight:700;min-width:32px">+${e.pts}pts</span>
+      <span id="xbonus-label-${kidId}-${i}" style="flex:1;opacity:0.75">${escHtml(e.reason||'Bonus')}</span>
+      <button class="btn btn-sm" style="padding:0.1rem 0.4rem;font-size:0.7rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="startEditXBonus('${kidId}','${day}',${i})">✏️</button>
+      <button class="btn btn-sm btn-danger" style="padding:0.1rem 0.4rem;font-size:0.7rem" onclick="deleteXBonus('${kidId}','${day}',${i})">✕</button>
+    </div>`).join('')+`</div>`;
+}
+
+async function addXBonus(kidId) {
+  const ptsEl    = document.getElementById('bonus-pts-'+kidId);
+  const reasonEl = document.getElementById('bonus-reason-'+kidId);
+  const pts    = parseInt(ptsEl?.value||0);
+  const reason = reasonEl?.value.trim()||'';
+  if(!pts||pts<1){ toast('Enter valid bonus points'); return; }
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk].xbonuses) done[tk].xbonuses={};
+  if(!done[tk].xbonuses[kidId]) done[tk].xbonuses[kidId]=[];
+  done[tk].xbonuses[kidId].push({ pts, reason });
+  await saveDone(done);
+  if(ptsEl)    ptsEl.value='';
+  if(reasonEl) reasonEl.value='';
+  const listEl = document.getElementById('xbonus-list-'+kidId);
+  if(listEl) listEl.innerHTML = renderXBonusList(kidId, tk);
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  toast((kid?kid.emoji+' ':'')+'+'+pts+' bonus pts'+(reason?' ('+reason+')':'')+'! 🌟');
+}
+
+function startEditXBonus(kidId, day, idx) {
+  const e = (((STATE.done[day]||{}).xbonuses||{})[kidId]||[])[idx];
+  if(!e) return;
+  const row = document.getElementById('xbonus-row-'+kidId+'-'+idx);
+  if(!row) return;
+  row.innerHTML = `<input id="xbedit-pts-${kidId}-${idx}" type="number" min="1" value="${e.pts}" style="width:55px;padding:0.2rem 0.3rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
+    <input id="xbedit-reason-${kidId}-${idx}" type="text" value="${escHtml(e.reason||'')}" placeholder="reason" style="flex:1;padding:0.2rem 0.4rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
+    <button class="btn btn-approve btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem" onclick="saveXBonus('${kidId}','${day}',${idx})">Save</button>
+    <button class="btn btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="cancelEditXBonus('${kidId}','${day}',${idx})">✕</button>`;
+}
+
+async function saveXBonus(kidId, day, idx) {
+  const pts    = parseInt(document.getElementById(`xbedit-pts-${kidId}-${idx}`)?.value||0);
+  const reason = document.getElementById(`xbedit-reason-${kidId}-${idx}`)?.value.trim()||'';
+  if(!pts||pts<1){ toast('Enter valid pts'); return; }
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[day]?.xbonuses?.[kidId]?.[idx]) return;
+  done[day].xbonuses[kidId][idx] = { pts, reason };
+  await saveDone(done);
+  const listEl = document.getElementById('xbonus-list-'+kidId);
+  if(listEl) listEl.innerHTML = renderXBonusList(kidId, day);
+  toast('Bonus updated ✓');
+}
+
+function cancelEditXBonus(kidId, day, idx) {
+  const listEl = document.getElementById('xbonus-list-'+kidId);
+  if(listEl) listEl.innerHTML = renderXBonusList(kidId, day);
+}
+
+async function deleteXBonus(kidId, day, idx) {
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[day]?.xbonuses?.[kidId]) return;
+  done[day].xbonuses[kidId].splice(idx,1);
+  await saveDone(done);
+  const listEl = document.getElementById('xbonus-list-'+kidId);
+  if(listEl) listEl.innerHTML = renderXBonusList(kidId, day);
+  toast('Bonus removed.');
+}
+
+// ── deed edit helpers ──
+function renderDeedList(kidId, day) {
+  const deeds = (((STATE.done[day]||{}).xdeeds)||{})[kidId]||[];
+  if(!deeds.length) return '';
+  return `<div style="margin:0.5rem 0;padding:0.5rem 0.6rem;background:rgba(255,215,0,0.05);border:1px solid rgba(255,215,0,0.15);border-radius:10px">
+    <div style="font-size:0.72rem;font-weight:700;color:rgba(255,215,0,0.7);margin-bottom:0.3rem;letter-spacing:0.04em">✨ APPROVED DEEDS TODAY</div>`+
+    deeds.map((d,i)=>`<div id="deed-row-${kidId}-${i}" style="display:flex;align-items:center;gap:0.4rem;padding:0.25rem 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.8rem">
+      <span id="deed-label-${kidId}-${i}" style="flex:1;opacity:0.8">${escHtml(d.desc||'Deed')}</span>
+      <span style="color:#FFD700;font-weight:700;min-width:40px;text-align:right">+${d.pts}pts</span>
+      <button class="btn btn-sm" style="padding:0.1rem 0.35rem;font-size:0.68rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="startEditDeed('${kidId}','${day}',${i})">✏️</button>
+      <button class="btn btn-sm btn-danger" style="padding:0.1rem 0.35rem;font-size:0.68rem" onclick="deleteDeed('${kidId}','${day}',${i})">✕</button>
+    </div>`).join('')+`</div>`;
+}
+
+function startEditDeed(kidId, day, idx) {
+  const d = (((STATE.done[day]||{}).xdeeds||{})[kidId]||[])[idx];
+  if(!d) return;
+  const row = document.getElementById('deed-row-'+kidId+'-'+idx);
+  if(!row) return;
+  row.innerHTML = `<input id="dedit-desc-${kidId}-${idx}" type="text" value="${escHtml(d.desc||'')}" placeholder="deed name" style="flex:1;padding:0.2rem 0.4rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
+    <input id="dedit-pts-${kidId}-${idx}" type="number" min="1" value="${d.pts||0}" style="width:50px;padding:0.2rem 0.3rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
+    <button class="btn btn-approve btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem" onclick="saveDeedEdit('${kidId}','${day}',${idx})">Save</button>
+    <button class="btn btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="cancelDeedEdit('${kidId}','${day}',${idx})">✕</button>`;
+}
+
+async function saveDeedEdit(kidId, day, idx) {
+  const desc = document.getElementById(`dedit-desc-${kidId}-${idx}`)?.value.trim()||'';
+  const pts  = parseInt(document.getElementById(`dedit-pts-${kidId}-${idx}`)?.value||0);
+  if(!desc||!pts||pts<1){ toast('Enter valid name and points'); return; }
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[day]?.xdeeds?.[kidId]?.[idx]) return;
+  done[day].xdeeds[kidId][idx] = { desc, pts };
+  await saveDone(done);
+  renderMarkTab();
+  toast('Deed updated ✓');
+}
+
+function cancelDeedEdit(kidId, day, idx) { renderMarkTab(); }
+
+async function deleteDeed(kidId, day, idx) {
+  if(!confirm('Remove this deed?')) return;
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[day]?.xdeeds?.[kidId]) return;
+  done[day].xdeeds[kidId].splice(idx,1);
+  await saveDone(done);
+  renderMarkTab();
+  toast('Deed removed.');
 }
 
 function renderTasksTab() {
@@ -2796,7 +2928,7 @@ function renderHistoryTab() {
       const kidDeeds = ((dayDone.xdeeds||{})[kid.id]||[]);
       kidDeeds.forEach(d=>{ pts+=d.pts||0; });
       const kidAdjH = ((dayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
-      pts = Math.max(0, pts + (kidAdjH.bonus||0) - (kidAdjH.penalty||0));
+      pts = Math.max(0, pts + (kidAdjH.bonus||0) - (kidAdjH.penalty||0) + getXBonusPts(dayDone, kid.id));
       const lv=getEmoji(pts);
 
       // Task rows with editable counters
@@ -3129,7 +3261,7 @@ function getWeekPtsForKid(kidId, tasks) {
     tasks.forEach(t=>{ total += (kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
     const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
-    total += (adj.bonus||0) - (adj.penalty||0);
+    total += (adj.bonus||0) - (adj.penalty||0) + getXBonusPts(dayDone, kidId);
   });
   return Math.max(0, total);
 }
@@ -3142,7 +3274,7 @@ function getTodayPtsForKid(kidId, tasks) {
   tasks.forEach(t=>{ pts+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
   ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ pts+=d.pts||0; });
   const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
-  pts += (adj.bonus||0)-(adj.penalty||0);
+  pts += (adj.bonus||0)-(adj.penalty||0) + getXBonusPts(dayDone, kidId);
   return Math.max(0,pts);
 }
 
@@ -3154,7 +3286,7 @@ function getAllTimePtsForKid(kidId, tasks) {
     tasks.forEach(t=>{ total+=(kidDone[t.id]||0)*getTaskPts(kidDone, t.id, t.points); });
     ((dayDone.xdeeds||{})[kidId]||[]).forEach(d=>{ total+=d.pts||0; });
     const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
-    total += (adj.bonus||0)-(adj.penalty||0);
+    total += (adj.bonus||0)-(adj.penalty||0) + getXBonusPts(dayDone, kidId);
   });
   return Math.max(0, total);
 }
@@ -3184,6 +3316,12 @@ function getEarnedTransactions(kidId, tasks) {
     if(net > 0) lines.push(`pts bonus +${net}`);
     if(net < 0) lines.push(`pts penalty ${net}`);
     dayPts += net;
+    ((dayDone.xbonuses||{})[kidId]||[]).forEach((b,i) => {
+      if(b.pts > 0) {
+        lines.push(`🌟 Bonus${b.reason?' ('+b.reason+')':''} +${b.pts}`);
+        dayPts += b.pts;
+      }
+    });
     if(dayPts > 0) {
       result.push({ date: day, desc: lines.join(', ') || 'Tasks done', kr: +(dayPts * KR_PER_PT) });
     }
@@ -3455,6 +3593,12 @@ function _renderKidsHistory() {
     const adj = ((dayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
     if(adj.bonus)   { dayPts+=adj.bonus;   taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">🎁</span><span class="kh-task-name">Bonus</span><span class="kh-task-pts" style="color:#2ecc71">+${adj.bonus} pts</span></div>`); }
     if(adj.penalty) { dayPts-=adj.penalty; taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">📉</span><span class="kh-task-name">Penalty</span><span class="kh-task-pts" style="color:#e74c3c">−${adj.penalty} pts</span></div>`); }
+    ((dayDone.xbonuses||{})[kid.id]||[]).forEach(b => {
+      if(b.pts > 0) {
+        dayPts += b.pts;
+        taskLines.push(`<div class="kh-task-row"><span class="kh-task-icon">🌟</span><span class="kh-task-name">Bonus${b.reason?' — '+escHtml(b.reason):''}</span><span class="kh-task-pts" style="color:#2ecc71">+${b.pts} pts</span></div>`);
+      }
+    });
     if(!taskLines.length) return '';
     const isToday = day === todayKey();
     const label = isToday ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'});
@@ -3623,6 +3767,9 @@ window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePho
 window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab; window.toggleKhDay=toggleKhDay;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
+window.addXBonus=addXBonus; window.startEditXBonus=startEditXBonus; window.saveXBonus=saveXBonus; window.cancelEditXBonus=cancelEditXBonus; window.deleteXBonus=deleteXBonus;
+window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.cancelDeedEdit=cancelDeedEdit; window.deleteDeed=deleteDeed;
+window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 
 // ============ STELLAR AI COACH ============
