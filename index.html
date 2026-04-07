@@ -1911,15 +1911,15 @@ function renderKidsView() {
             labelStyle=`color:${col.main};font-weight:700;`;
             sub=`<div style="font-size:0.5rem;color:${col.main};font-weight:700;margin-top:2px;letter-spacing:0.03em">YOU ARE HERE</div>`;
           } else if(isPast){
-            chipStyle='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);';
-            emojiStyle='filter:grayscale(30%) opacity(0.65);';
-            labelStyle='opacity:0.4;';
-            sub=`<div style="font-size:0.5rem;color:#2ecc71;opacity:0.6;margin-top:2px">✓ achieved</div>`;
+            chipStyle=`background:linear-gradient(135deg,${col.main}15,rgba(255,255,255,0.04));border:1px solid ${col.main}55;`;
+            emojiStyle='';
+            labelStyle=`color:${col.main};opacity:0.85;`;
+            sub=`<div style="font-size:0.55rem;color:#2ecc71;font-weight:700;margin-top:2px">✓</div>`;
           } else {
-            chipStyle='background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.13);';
-            emojiStyle='filter:grayscale(55%) opacity(0.35);';
-            labelStyle='opacity:0.3;';
-            sub=`<div style="font-size:0.5rem;opacity:0.4;margin-top:2px">+${ptsNeeded} pts</div>`;
+            chipStyle='background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.13);opacity:0.45;';
+            emojiStyle='filter:grayscale(70%);';
+            labelStyle='opacity:0.6;';
+            sub=`<div style="font-size:0.65rem;margin-top:2px">🔒</div><div style="font-size:0.48rem;opacity:0.6;margin-top:1px">+${ptsNeeded} pts</div>`;
           }
           if(i>0) chips.push(`<div class="level-chip-arrow">›</div>`);
           chips.push(`<div class="level-chip${isCur?' level-chip-current':''}" id="lchip-${kid.id}-${i}" style="${chipStyle}">
