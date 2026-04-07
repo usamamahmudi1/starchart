@@ -2203,18 +2203,20 @@ function renderDeedList(kidId, day) {
     </div>`).join('')+`</div>`;
 }
 
-function startEditDeed(kidId, day, idx) {
+function startEditDeed(kidId, day, idx, ctx) {
   const d = (((STATE.done[day]||{}).xdeeds||{})[kidId]||[])[idx];
   if(!d) return;
-  const row = document.getElementById('deed-row-'+kidId+'-'+idx);
+  const rowId = ctx==='hist' ? `hdeed-${day}-${kidId}-${idx}` : `deed-row-${kidId}-${idx}`;
+  const row = document.getElementById(rowId);
   if(!row) return;
+  const c = ctx||'';
   row.innerHTML = `<input id="dedit-desc-${kidId}-${idx}" type="text" value="${escHtml(d.desc||'')}" placeholder="deed name" style="flex:1;padding:0.2rem 0.4rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
     <input id="dedit-pts-${kidId}-${idx}" type="number" min="1" value="${d.pts||0}" style="width:50px;padding:0.2rem 0.3rem;border-radius:6px;border:1px solid rgba(255,255,255,0.2);background:rgba(255,255,255,0.08);color:#fff;font-size:0.78rem">
-    <button class="btn btn-approve btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem" onclick="saveDeedEdit('${kidId}','${day}',${idx})">Save</button>
-    <button class="btn btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="cancelDeedEdit('${kidId}','${day}',${idx})">✕</button>`;
+    <button class="btn btn-approve btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem" onclick="saveDeedEdit('${kidId}','${day}',${idx},'${c}')">Save</button>
+    <button class="btn btn-sm" style="padding:0.15rem 0.5rem;font-size:0.72rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="cancelDeedEdit('${kidId}','${day}',${idx},'${c}')">✕</button>`;
 }
 
-async function saveDeedEdit(kidId, day, idx) {
+async function saveDeedEdit(kidId, day, idx, ctx) {
   const desc = document.getElementById(`dedit-desc-${kidId}-${idx}`)?.value.trim()||'';
   const pts  = parseInt(document.getElementById(`dedit-pts-${kidId}-${idx}`)?.value||0);
   if(!desc||!pts||pts<1){ toast('Enter valid name and points'); return; }
@@ -2222,19 +2224,21 @@ async function saveDeedEdit(kidId, day, idx) {
   if(!done[day]?.xdeeds?.[kidId]?.[idx]) return;
   done[day].xdeeds[kidId][idx] = { desc, pts };
   await saveDone(done);
-  renderMarkTab();
+  if(ctx==='hist') renderHistoryTab(); else renderMarkTab();
   toast('Deed updated ✓');
 }
 
-function cancelDeedEdit(kidId, day, idx) { renderMarkTab(); }
+function cancelDeedEdit(kidId, day, idx, ctx) {
+  if(ctx==='hist') renderHistoryTab(); else renderMarkTab();
+}
 
-async function deleteDeed(kidId, day, idx) {
+async function deleteDeed(kidId, day, idx, ctx) {
   if(!confirm('Remove this deed?')) return;
   const done = JSON.parse(JSON.stringify(STATE.done));
   if(!done[day]?.xdeeds?.[kidId]) return;
   done[day].xdeeds[kidId].splice(idx,1);
   await saveDone(done);
-  renderMarkTab();
+  if(ctx==='hist') renderHistoryTab(); else renderMarkTab();
   toast('Deed removed.');
 }
 
@@ -2959,11 +2963,13 @@ function renderHistoryTab() {
           <span class="history-task-pts">+0pts</span>
         </div>`).join('');
 
-      // Deed rows
+      // Deed rows (with edit/delete)
       const deedRows = kidDeeds.map((d,di)=>`
-        <div class="history-deed-row">
+        <div class="history-deed-row" id="hdeed-${day}-${kid.id}-${di}" style="display:flex;align-items:center;gap:0.4rem">
           <span style="flex:1">✨ ${escHtml(d.desc)}</span>
-          <span style="font-size:0.8rem;opacity:0.7">+${d.pts}pts</span>
+          <span style="font-size:0.8rem;opacity:0.7;min-width:40px;text-align:right">+${d.pts}pts</span>
+          <button class="btn btn-sm" style="padding:0.1rem 0.3rem;font-size:0.68rem;background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="startEditDeed('${kid.id}','${day}',${di},'hist')">✏️</button>
+          <button class="btn btn-sm btn-danger" style="padding:0.1rem 0.3rem;font-size:0.68rem" onclick="deleteDeed('${kid.id}','${day}',${di},'hist')">✕</button>
         </div>`).join('');
 
       return `<div class="history-kid-section">
