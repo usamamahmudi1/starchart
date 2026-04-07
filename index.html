@@ -3996,7 +3996,8 @@ function _stellarSpeak(text) {
     speechSynthesis.cancel();
     _stellarSetStatus('🌟', 'Speaking…', text);
     _stellarOrbPulse(true);
-    const utt = new SpeechSynthesisUtterance(text);
+    const speakText = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]+/gu, '').replace(/\s{2,}/g,' ').trim();
+    const utt = new SpeechSynthesisUtterance(speakText);
     utt.rate = 1.05; utt.pitch = 1.2; utt.volume = 1;
     const voices = speechSynthesis.getVoices();
     const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
