@@ -372,6 +372,22 @@
     -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
   }
   .kid-pts-unit { font-size: 0.65rem; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.05em; }
+  /* Level progression strip */
+  .level-strip {
+    display: flex; gap: 0.35rem; overflow-x: auto;
+    padding: 0.1rem 0.6rem 0.5rem; margin: 0 -0.5rem 0.3rem;
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  .level-strip::-webkit-scrollbar { display: none; }
+  .level-chip {
+    flex-shrink: 0; text-align: center; border-radius: 10px;
+    padding: 0.35rem 0.4rem; min-width: 60px; max-width: 66px;
+    position: relative;
+  }
+  .level-chip-arrow {
+    flex-shrink: 0; align-self: center; font-size: 0.7rem;
+    opacity: 0.25; line-height: 1;
+  }
   /* Scrollable task area */
   .kid-tasks-scroll {
     max-height: 185px; overflow-y: auto;
@@ -1880,6 +1896,41 @@ function renderKidsView() {
         <span class="kid-level-banner-label">${level.label}</span>
       </div>
       ${(()=>{
+        const allLvls = getLevels().slice().sort((a,b)=>a.min-b.min);
+        const curIdx  = allLvls.reduce((ci,l,i)=>pts>=l.min?i:ci, 0);
+        const showTo  = Math.min(allLvls.length-1, curIdx+2);
+        const chips   = [];
+        for(let i=0;i<=showTo;i++){
+          const l=allLvls[i];
+          const isPast=i<curIdx, isCur=i===curIdx, isFut=i>curIdx;
+          const ptsNeeded=l.min-pts;
+          let chipStyle, emojiStyle, labelStyle, sub;
+          if(isCur){
+            chipStyle=`background:linear-gradient(135deg,${col.main}22,${col.main}0a);border:2px solid ${col.main}99;box-shadow:0 0 10px ${col.main}44;`;
+            emojiStyle='';
+            labelStyle=`color:${col.main};font-weight:700;`;
+            sub=`<div style="font-size:0.5rem;color:${col.main};font-weight:700;margin-top:2px;letter-spacing:0.03em">YOU ARE HERE</div>`;
+          } else if(isPast){
+            chipStyle='background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);';
+            emojiStyle='filter:grayscale(30%) opacity(0.65);';
+            labelStyle='opacity:0.4;';
+            sub=`<div style="font-size:0.5rem;color:#2ecc71;opacity:0.6;margin-top:2px">✓ achieved</div>`;
+          } else {
+            chipStyle='background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.13);';
+            emojiStyle='filter:grayscale(55%) opacity(0.35);';
+            labelStyle='opacity:0.3;';
+            sub=`<div style="font-size:0.5rem;opacity:0.4;margin-top:2px">+${ptsNeeded} pts</div>`;
+          }
+          if(i>0) chips.push(`<div class="level-chip-arrow">›</div>`);
+          chips.push(`<div class="level-chip${isCur?' level-chip-current':''}" id="lchip-${kid.id}-${i}" style="${chipStyle}">
+            <div style="font-size:1.3rem;line-height:1;${emojiStyle}">${l.emoji}</div>
+            <div style="font-size:0.57rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:64px;line-height:1.2;margin-top:2px;${labelStyle}">${escHtml(l.label)}</div>
+            ${sub}
+          </div>`);
+        }
+        return `<div class="level-strip" id="lstrip-${kid.id}">${chips.join('')}</div>`;
+      })()}
+      ${(()=>{
         const _wp  = getAllTimePtsForKid(kid.id, tasks);
         const _tp  = getTodayPtsForKid(kid.id, tasks);
         const _sp  = totalSpentKid(kid.id);
@@ -1926,6 +1977,14 @@ function renderKidsView() {
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
   }).join('');
+  // Scroll each level strip so the current level chip is centred
+  const { kids: ks2 } = getData();
+  ks2.forEach(k => {
+    const strip = document.getElementById('lstrip-'+k.id);
+    if(!strip) return;
+    const cur = strip.querySelector('.level-chip-current');
+    if(cur) strip.scrollLeft = cur.offsetLeft - strip.offsetWidth/2 + cur.offsetWidth/2;
+  });
 }
 
 // ============ PARENT VIEW ============
