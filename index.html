@@ -2043,14 +2043,23 @@ function renderKidsView() {
           </div>`).join('')}
         </div>`;
       })()}
-      ${kidPendingPenalties.length ? `<div style="margin:0.5rem 0 0;padding:0.55rem 0.75rem;background:rgba(255,60,60,0.13);border:2px solid rgba(255,60,60,0.5);border-radius:12px;animation:pulse 1.8s ease-in-out infinite">
-        <div style="font-size:0.82rem;font-weight:700;color:#ff4444;margin-bottom:0.3rem">⚠️ WARNING — Waiting for parent</div>
-        ${kidPendingPenalties.map(p=>`<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin:0.15rem 0;opacity:0.9">
-          <span>${escHtml(p.reason||'Point deduction')}</span>
-          <span style="color:#ff4444;font-weight:700">−${p.pts}pts</span>
-        </div>`).join('')}
-        <div style="font-size:0.65rem;opacity:0.55;margin-top:0.3rem">A parent will confirm or cancel this</div>
-      </div>` : ''}
+      ${(()=>{
+        if(!kidPendingPenalties.length) return '';
+        const totalDeduct = kidPendingPenalties.reduce((s,p)=>s+(p.pts||0),0);
+        const scoreAfter  = Math.max(0, pts - totalDeduct);
+        return `<div style="margin:0.5rem 0 0;padding:0.55rem 0.75rem;background:rgba(255,60,60,0.13);border:2px solid rgba(255,60,60,0.5);border-radius:12px;animation:pulse 1.8s ease-in-out infinite">
+          <div style="font-size:0.82rem;font-weight:700;color:#ff4444;margin-bottom:0.3rem">⚠️ WARNING — Waiting for parent</div>
+          ${kidPendingPenalties.map(p=>`<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin:0.15rem 0;opacity:0.9">
+            <span>${escHtml(p.reason||'Point deduction')}</span>
+            <span style="color:#ff4444;font-weight:700">−${p.pts}pts</span>
+          </div>`).join('')}
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem;padding-top:0.35rem;border-top:1px solid rgba(255,60,60,0.25);font-size:0.75rem">
+            <span style="opacity:0.65">Score if confirmed:</span>
+            <span style="font-weight:700;color:#ff8888">${pts} → ${scoreAfter} pts</span>
+          </div>
+          <div style="font-size:0.65rem;opacity:0.55;margin-top:0.25rem">A parent will confirm or cancel this</div>
+        </div>`;
+      })()}
       <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
