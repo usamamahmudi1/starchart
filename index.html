@@ -1582,7 +1582,7 @@ function scheduleRender(docId) {
       const activeTab = document.querySelector('.tab-btn.active');
       const tabName = activeTab ? activeTab.textContent.trim() : '';
       if(tabName.includes('Mark'))      renderMarkTab();
-      if(tabName.includes('Approvals') || changedPending) renderApprovalsTab();
+      if(tabName.includes('Approvals') || changedPending || docId==='done') renderApprovalsTab();
       if(tabName.includes('Tasks'))    renderTasksTab();
       if(tabName.includes('Kids'))     renderKidsTab();
       if(tabName.includes('Settings')) renderLevelsEditor();
@@ -1600,6 +1600,10 @@ function updatePendingBadge() {
   Object.values(pending).forEach(taskIds => {
     Object.values(taskIds).forEach(c => { total += (c||0); });
   });
+  // Count pending penalties
+  const tk = todayKey();
+  const pp = (STATE.done[tk]||{}).pendingPenalties||{};
+  Object.values(pp).forEach(arr => { total += arr.length; });
   // Badge on Approvals tab button
   const btn = document.getElementById('tab-btn-approvals');
   if(!btn) return;
@@ -1623,15 +1627,42 @@ function renderApprovalsTab() {
   const { kids, tasks } = getData();
   const el = document.getElementById('approvals-content');
   if(!el) return;
+  const tk = todayKey();
+  const todayDone = STATE.done[tk]||{};
+
+  // ── Pending penalty warnings section ──
+  const penaltyCards = kids.map(kid => {
+    const pp = ((todayDone.pendingPenalties||{})[kid.id]||[]);
+    if(!pp.length) return '';
+    const col = COLORS[kid.color]||COLORS.pink;
+    return `<div class="approval-card" style="border:1.5px solid rgba(255,60,60,0.4);background:rgba(255,30,30,0.05)">
+      <div class="approval-card-header">
+        <div class="approval-kid-avatar" style="background:linear-gradient(135deg,${col.grad})">${kid.emoji||'⭐'}</div>
+        <div>
+          <div class="approval-kid-name" style="color:#ff4444">${escHtml(kid.name)}</div>
+          <div style="font-size:0.8rem;opacity:0.6">⚠️ Pending warning — confirm or cancel</div>
+        </div>
+      </div>
+      ${pp.map((p,i)=>`<div class="approval-task-row" style="border:1px solid rgba(255,60,60,0.25);background:rgba(255,30,30,0.06)">
+        <div style="flex:1">
+          <div class="approval-task-name" style="color:#ff6666">−${p.pts} pts</div>
+          <div style="font-size:0.75rem;opacity:0.6;margin-top:2px">${escHtml(p.reason||'Point deduction')}</div>
+        </div>
+        <button class="btn btn-approve btn-sm" onclick="confirmPenalty('${kid.id}',${i})">✓ Confirm</button>
+        <button class="btn btn-reject btn-sm" onclick="dismissPenalty('${kid.id}',${i})">✗ Cancel</button>
+      </div>`).join('')}
+    </div>`;
+  }).filter(Boolean).join('');
+
   const pending = STATE.pending || {};
   const entries = Object.entries(pending).filter(([kidId, taskIds]) =>
     Object.values(taskIds).some(c=>c>0)
   );
-  if(!entries.length) {
+  if(!entries.length && !penaltyCards.length) {
     el.innerHTML = '<div class="approvals-empty">🎉 No pending suggestions<br><span style="font-size:0.85rem">When a child taps "I did something!", it will appear here for you to approve.</span></div>';
     return;
   }
-  el.innerHTML = entries.map(([kidId, taskIds]) => {
+  el.innerHTML = penaltyCards + entries.map(([kidId, taskIds]) => {
     const kid = kids.find(k=>k.id===kidId);
     if(!kid) return '';
     const col = COLORS[kid.color]||COLORS.pink;
@@ -1808,6 +1839,30 @@ function makeStars() {
   }
 }
 
+// ── Penalty warning announcements (per session, per unique penalty id) ──
+const _warnedPenaltyIds = new Set();
+function _announcePenaltyWarning(kidName, penalties) {
+  const newOnes = penalties.filter(p=>!_warnedPenaltyIds.has(p.id));
+  if(!newOnes.length) return;
+  newOnes.forEach(p=>_warnedPenaltyIds.add(p.id));
+  const first = kidName.split(' ')[0];
+  const reasons = newOnes.map(p=>p.reason||'a deduction').join(' and ');
+  const text = `${first}, you have a warning! ${reasons}. A parent needs to confirm this.`;
+  try {
+    const doSpeak = voices => {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 0.92; utt.pitch = 1.05; utt.volume = 1;
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
+      if(pick) utt.voice = pick;
+      setTimeout(()=>speechSynthesis.speak(utt), 200);
+    };
+    const v = speechSynthesis.getVoices();
+    if(v.length) doSpeak(v);
+    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
+  } catch(e) {}
+}
+
 // ============ KIDS VIEW ============
 function renderKidsView() {
   const { kids, tasks, done } = getData();
@@ -1826,6 +1881,9 @@ function renderKidsView() {
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdjKV = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
     pts = Math.max(0, pts + (kidAdjKV.bonus||0) - (kidAdjKV.penalty||0) + getXBonusPts(todayDone, kid.id) - getXPenaltyPts(todayDone, kid.id));
+    // Pending penalty warnings — announce new ones via TTS
+    const kidPendingPenalties = ((todayDone.pendingPenalties||{})[kid.id]||[]);
+    if(kidPendingPenalties.length) _announcePenaltyWarning(kid.name, kidPendingPenalties);
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
@@ -1985,6 +2043,14 @@ function renderKidsView() {
           </div>`).join('')}
         </div>`;
       })()}
+      ${kidPendingPenalties.length ? `<div style="margin:0.5rem 0 0;padding:0.55rem 0.75rem;background:rgba(255,60,60,0.13);border:2px solid rgba(255,60,60,0.5);border-radius:12px;animation:pulse 1.8s ease-in-out infinite">
+        <div style="font-size:0.82rem;font-weight:700;color:#ff4444;margin-bottom:0.3rem">⚠️ WARNING — Waiting for parent</div>
+        ${kidPendingPenalties.map(p=>`<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin:0.15rem 0;opacity:0.9">
+          <span>${escHtml(p.reason||'Point deduction')}</span>
+          <span style="color:#ff4444;font-weight:700">−${p.pts}pts</span>
+        </div>`).join('')}
+        <div style="font-size:0.65rem;opacity:0.55;margin-top:0.3rem">A parent will confirm or cancel this</div>
+      </div>` : ''}
       <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
@@ -2290,16 +2356,41 @@ async function addXPenalty(kidId) {
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]) done[tk]={};
-  if(!done[tk].xpenalties) done[tk].xpenalties={};
-  if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
-  done[tk].xpenalties[kidId].push({pts, reason});
+  if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
+  if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
+  done[tk].pendingPenalties[kidId].push({pts, reason, id: Date.now()+'-'+Math.random().toString(36).slice(2,6)});
   await saveDone(done);
   if(ptsEl) ptsEl.value='';
   if(reasonEl) reasonEl.value='';
-  const listEl = document.getElementById('xpenalty-list-'+kidId);
-  if(listEl) listEl.innerHTML = renderXPenaltyList(kidId, tk);
   const kid = STATE.kids.find(k=>k.id===kidId);
-  toast((kid?kid.emoji+' ':'')+'−'+pts+' pts deducted'+(reason?' ('+reason+')':''));
+  toast((kid?kid.emoji+' ':'')+'⚠️ Warning sent to '+( kid?kid.name:'kid')+'\'s screen');
+  updatePendingBadge();
+}
+
+async function confirmPenalty(kidId, idx) {
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  const entry = ((done[tk]?.pendingPenalties)||{})[kidId]?.[idx];
+  if(!entry) return;
+  // Move to xpenalties
+  if(!done[tk].xpenalties) done[tk].xpenalties={};
+  if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
+  done[tk].xpenalties[kidId].push({pts:entry.pts, reason:entry.reason});
+  done[tk].pendingPenalties[kidId].splice(idx,1);
+  await saveDone(done);
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  toast((kid?kid.emoji+' ':'')+'−'+entry.pts+' pts confirmed');
+  renderApprovalsTab(); updatePendingBadge();
+}
+
+async function dismissPenalty(kidId, idx) {
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]?.pendingPenalties?.[kidId]) return;
+  done[tk].pendingPenalties[kidId].splice(idx,1);
+  await saveDone(done);
+  toast('Warning cancelled — no points deducted');
+  renderApprovalsTab(); updatePendingBadge();
 }
 
 function startEditXPenalty(kidId, day, idx) {
@@ -3940,7 +4031,8 @@ window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
 window.addXBonus=addXBonus; window.startEditXBonus=startEditXBonus; window.saveXBonus=saveXBonus; window.cancelEditXBonus=cancelEditXBonus; window.deleteXBonus=deleteXBonus;
-window.addXPenalty=addXPenalty; window.startEditXPenalty=startEditXPenalty; window.saveXPenalty=saveXPenalty; window.cancelEditXPenalty=cancelEditXPenalty; window.deleteXPenalty=deleteXPenalty;
+window.addXPenalty=addXPenalty; window.confirmPenalty=confirmPenalty; window.dismissPenalty=dismissPenalty;
+window.startEditXPenalty=startEditXPenalty; window.saveXPenalty=saveXPenalty; window.cancelEditXPenalty=cancelEditXPenalty; window.deleteXPenalty=deleteXPenalty;
 window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.cancelDeedEdit=cancelDeedEdit; window.deleteDeed=deleteDeed;
 window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
