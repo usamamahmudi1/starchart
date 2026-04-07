@@ -3590,17 +3590,17 @@ function triggerCelebration(level, kidName) {
     ];
     const text = phrases[Math.floor(Math.random()*phrases.length)];
     speechSynthesis.cancel();
-    setTimeout(() => {
+    const speakLevelUp = (voices) => {
       const msg = new SpeechSynthesisUtterance(text);
-      msg.rate  = 1.15;
-      msg.pitch = 1.4;
-      msg.volume = 1;
-      // Try to pick an upbeat/female voice if available
-      const voices = speechSynthesis.getVoices();
-      const pick = voices.find(v=>/Google US English|Samantha|Karen|Victoria|Zira/i.test(v.name)) || voices[0];
+      msg.rate = 1.15; msg.pitch = 1.4; msg.volume = 1;
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Victoria|Zira/i.test(v.name))
+                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
       if(pick) msg.voice = pick;
-      speechSynthesis.speak(msg);
-    }, 800);
+      setTimeout(() => speechSynthesis.speak(msg), 900);
+    };
+    const lvVoices = speechSynthesis.getVoices();
+    if(lvVoices.length) { speakLevelUp(lvVoices); }
+    else { speechSynthesis.onvoiceschanged = () => { speechSynthesis.onvoiceschanged=null; speakLevelUp(speechSynthesis.getVoices()); }; }
   } catch(e) {}
 }
 
@@ -3935,6 +3935,8 @@ function _stellarOrbPulse(on) {
 async function openStellar(kidId) {
   const key = getStellarKey();
   if(!key) { toast('Ask a parent to add the Stellar API key in Settings ⚙️'); return; }
+  // Unlock audio on iOS/mobile — must happen inside a direct user gesture handler
+  try { const u=new SpeechSynthesisUtterance(''); u.volume=0; speechSynthesis.speak(u); } catch(e){}
   _stellarKidId   = kidId;
   _stellarHistory = [];
   const kid = STATE.kids.find(k=>k.id===kidId);
@@ -3997,17 +3999,36 @@ function _stellarSpeak(text) {
     _stellarSetStatus('🌟', 'Speaking…', text);
     _stellarOrbPulse(true);
     const speakText = text.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FEFF}]+/gu, '').replace(/\s{2,}/g,' ').trim();
-    const utt = new SpeechSynthesisUtterance(speakText);
-    utt.rate = 1.05; utt.pitch = 1.2; utt.volume = 1;
-    const voices = speechSynthesis.getVoices();
-    const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-              || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-    if(pick) utt.voice = pick;
-    utt.onend = () => {
-      _stellarOrbPulse(false);
-      _stellarSetStatus('🌟', 'Tap 🎤 to reply', '');
+
+    const doSpeak = (voices) => {
+      const utt = new SpeechSynthesisUtterance(speakText);
+      utt.rate = 1.05; utt.pitch = 1.2; utt.volume = 1;
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                || voices.find(v=>/en-US|en_US/i.test(v.lang))
+                || voices.find(v=>/en/i.test(v.lang))
+                || voices[0];
+      if(pick) utt.voice = pick;
+      utt.onend = () => { _stellarOrbPulse(false); _stellarSetStatus('🌟', 'Tap 🎤 to reply', ''); };
+      utt.onerror = () => { _stellarOrbPulse(false); };
+      // Small delay after cancel() — needed on some browsers/iOS
+      setTimeout(() => speechSynthesis.speak(utt), 120);
     };
-    speechSynthesis.speak(utt);
+
+    const voices = speechSynthesis.getVoices();
+    if(voices.length) {
+      doSpeak(voices);
+    } else {
+      // Voices not loaded yet — wait for them (Chrome pattern)
+      speechSynthesis.onvoiceschanged = () => {
+        speechSynthesis.onvoiceschanged = null;
+        doSpeak(speechSynthesis.getVoices());
+      };
+      // Fallback timeout in case onvoiceschanged never fires
+      setTimeout(() => {
+        const v = speechSynthesis.getVoices();
+        if(v.length) { speechSynthesis.onvoiceschanged = null; doSpeak(v); }
+      }, 1000);
+    }
   } catch(e) { _stellarOrbPulse(false); }
 }
 
