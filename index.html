@@ -3126,12 +3126,15 @@ function renderMoneyTab() {
     const spent     = totalSpentKid(kid.id);
     const balance   = Math.max(0, earned + bonus - spent);
 
-    const earnedTxns = getEarnedTransactions(kid.id, tasks);
-    const bonusTxns  = getBonusesForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) }));
-    const spendTxns  = getSpendingForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) }));
+    const earnedTxns  = getEarnedTransactions(kid.id, tasks);
+    const bonusTxns   = getBonusesForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) }));
+    const penaltyTxns = getPenaltyTransactions(kid.id);
+    const spendTxns   = getSpendingForKid(kid.id).slice().reverse().map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) }));
+    const totalDeducted = penaltyTxns.reduce((s,p)=>s+Math.abs(p.kr),0);
     const allTxnsChron = [
       ...earnedTxns.map(e=>({ date:e.date, desc:'📋 '+e.desc, amt:+e.kr })),
       ...bonusTxns,
+      ...penaltyTxns.map(e=>({ date:e.date, desc:e.desc, amt:e.kr })),
       ...spendTxns,
     ].sort((a,b)=>(a.date>b.date?1:a.date<b.date?-1:0));
     let rb = 0;
@@ -3154,7 +3157,7 @@ function renderMoneyTab() {
         <span style="font-size:1.4rem">${kid.emoji||'⭐'}</span>
         <span style="font-weight:700;font-size:1.05rem;color:${col.main}">${escHtml(kid.name)}</span>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr${totalDeducted>0?' 1fr':''} 1fr 1fr;gap:0.4rem;margin-bottom:0.75rem">
         <div style="background:rgba(46,204,113,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
           <div style="font-size:1rem;font-weight:700;color:#2ecc71">+${earned.toFixed(2)}</div>
           <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Earned</div>
@@ -3163,6 +3166,10 @@ function renderMoneyTab() {
           <div style="font-size:1rem;font-weight:700;color:#FFD700">+${bonus.toFixed(2)}</div>
           <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Bonus</div>
         </div>
+        ${totalDeducted>0?`<div style="background:rgba(231,76,60,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
+          <div style="font-size:1rem;font-weight:700;color:#e74c3c">−${totalDeducted.toFixed(2)}</div>
+          <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Deducted</div>
+        </div>`:''}
         <div style="background:rgba(231,76,60,0.12);border-radius:8px;padding:0.45rem 0.5rem;text-align:center">
           <div style="font-size:1rem;font-weight:700;color:#e74c3c">−${spent.toFixed(2)}</div>
           <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Spent</div>
@@ -3588,6 +3595,7 @@ function getAllTimePtsForKid(kidId, tasks) {
 
 // Returns [{date, desc, kr}] of earned income per day for a kid
 function getEarnedTransactions(kidId, tasks) {
+  // Returns gross earnings only — penalties are separate via getPenaltyTransactions
   const result = [];
   Object.keys(STATE.done).sort().forEach(day => {
     const dayDone = STATE.done[day];
@@ -3608,20 +3616,35 @@ function getEarnedTransactions(kidId, tasks) {
     });
     const adj = ((dayDone.adjustments||{})[kidId])||{bonus:0,penalty:0};
     const net = (adj.bonus||0)-(adj.penalty||0);
-    if(net > 0) lines.push(`pts bonus +${net}`);
-    if(net < 0) lines.push(`pts penalty ${net}`);
-    dayPts += net;
+    if(net > 0) { lines.push(`pts bonus +${net}`); dayPts += net; }
+    if(net < 0) { lines.push(`pts penalty ${net}`); dayPts += net; }
     ((dayDone.xbonuses||{})[kidId]||[]).forEach(b => {
       if(b.pts > 0) { lines.push(`🌟 Bonus${b.reason?' ('+b.reason+')':''} +${b.pts}`); dayPts += b.pts; }
     });
-    ((dayDone.xpenalties||{})[kidId]||[]).forEach(p => {
-      if(p.pts > 0) { lines.push(`😕 Deduction${p.reason?' ('+p.reason+')':''} −${p.pts}`); dayPts -= p.pts; }
-    });
+    // xpenalties excluded here — shown as separate entries via getPenaltyTransactions
     if(dayPts > 0) {
       result.push({ date: day, desc: lines.join(', ') || 'Tasks done', kr: +(dayPts * KR_PER_PT) });
     }
   });
   return result.reverse();
+}
+
+function getPenaltyTransactions(kidId) {
+  const result = [];
+  Object.keys(STATE.done).sort().forEach(day => {
+    const dayDone = STATE.done[day];
+    ((dayDone.xpenalties||{})[kidId]||[]).forEach(p => {
+      if(p.pts > 0) {
+        result.push({
+          date: day,
+          desc: `😕 Deduction${p.reason?' — '+p.reason:''}`,
+          kr: -(p.pts * KR_PER_PT),
+          pts: p.pts,
+        });
+      }
+    });
+  });
+  return result;
 }
 
 // Spending stored in STATE.spending = { kidId: [{desc,kr,date},...] }
@@ -3952,14 +3975,17 @@ function openCardDetail(kidId) {
   const weekKr   = Math.round(allPts  * KR_PER_PT + bonus);
   const todayOre = (todayPts * ORE_PER_PT).toFixed(1);
   const todayKr  = Math.round(todayPts * KR_PER_PT);
-  const spendList = getSpendingForKid(kidId).slice().reverse();
-  const bonusList = getBonusesForKid(kidId).slice().reverse();
+  const spendList   = getSpendingForKid(kidId).slice().reverse();
+  const bonusList   = getBonusesForKid(kidId).slice().reverse();
+  const penaltyList = getPenaltyTransactions(kidId);
+  const totalDeducted = penaltyList.reduce((s,p)=>s+Math.abs(p.kr),0);
   const cardNum  = String(kidId.split('').reduce((a,c)=>(a*31+c.charCodeAt(0))&0xFFFF,0)).padStart(4,'0').slice(-4);
   const remClass = remaining < 0 ? 'red' : 'teal';
   const earnedList = getEarnedTransactions(kidId, tasks);
   const allTxnsChron = [
-    ...earnedList.map(e=>({ date:e.date, desc:'📋 '+e.desc,   amt:+e.kr })),
+    ...earnedList.map(e=>({ date:e.date, desc:'📋 '+e.desc, amt:+e.kr })),
     ...bonusList.map(e=>({ date:e.date||'', desc:'🎁 Bonus'+(e.reason?': '+e.reason:''), amt:+(e.kr||0) })),
+    ...penaltyList.map(e=>({ date:e.date, desc:e.desc, amt:e.kr })),
     ...spendList.map(e=>({ date:e.date||'', desc:'🛍️ '+escHtml(e.desc||'Spent'), amt:-(e.kr||0) })),
   ].sort((a,b)=>(a.date>b.date?1:a.date<b.date?-1:0)); // oldest first
   // Compute running balance per row
@@ -3993,7 +4019,8 @@ function openCardDetail(kidId) {
         <div class="cd-bal-box"><div class="cd-bal-amount">${weekKr} kr</div><div class="cd-bal-label">All-time · kr</div></div>
         <div class="cd-bal-box"><div class="cd-bal-amount">${todayOre} öre</div><div class="cd-bal-label">Today · öre</div></div>
         <div class="cd-bal-box"><div class="cd-bal-amount">${todayKr} kr</div><div class="cd-bal-label">Today · kr</div></div>
-        <div class="cd-bal-box" style="grid-column:1/-1"><div class="cd-bal-amount ${remClass}">${Math.round(remaining)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
+        ${totalDeducted>0?`<div class="cd-bal-box"><div class="cd-bal-amount" style="color:#e74c3c">−${totalDeducted.toFixed(2)} kr</div><div class="cd-bal-label">Deducted</div></div>`:''}
+        <div class="cd-bal-box" style="${totalDeducted>0?'':'grid-column:1/-1'}"><div class="cd-bal-amount ${remClass}">${Math.round(remaining)} kr</div><div class="cd-bal-label">Remaining after spending</div></div>
       </div>
     </div>
     <div class="cd-section">
