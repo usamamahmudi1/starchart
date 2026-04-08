@@ -1840,7 +1840,33 @@ function makeStars() {
 }
 
 // ── Penalty warning announcements (per session, per unique penalty id) ──
-const _warnedPenaltyIds = new Set();
+const _warnedPenaltyIds    = new Set();
+const _confirmedPenaltyIds = new Set();
+
+function _announceConfirmedPenalty(kidName, penalties) {
+  const newOnes = penalties.filter(p=>p.id && !_confirmedPenaltyIds.has(p.id));
+  if(!newOnes.length) return;
+  newOnes.forEach(p=>_confirmedPenaltyIds.add(p.id));
+  const first = kidName.split(' ')[0];
+  newOnes.forEach(p => {
+    const ores = (p.pts * ORE_PER_PT).toFixed(1);
+    const text = `${first}, ${p.pts} point${p.pts!==1?'s':''} have been deducted${p.reason?' for '+p.reason:''}. ${ores} Öres have also been deducted from your account.`;
+    try {
+      const doSpeak = voices => {
+        const utt = new SpeechSynthesisUtterance(text);
+        utt.rate = 0.92; utt.pitch = 1.0; utt.volume = 1;
+        const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                  || voices.find(v=>/en/i.test(v.lang)) || voices[0];
+        if(pick) utt.voice = pick;
+        setTimeout(()=>speechSynthesis.speak(utt), 200);
+      };
+      const v = speechSynthesis.getVoices();
+      if(v.length) doSpeak(v);
+      else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
+    } catch(e) {}
+  });
+}
+
 function _announcePenaltyWarning(kidName, penalties) {
   const newOnes = penalties.filter(p=>!_warnedPenaltyIds.has(p.id));
   if(!newOnes.length) return;
@@ -1884,6 +1910,9 @@ function renderKidsView() {
     // Pending penalty warnings — announce new ones via TTS
     const kidPendingPenalties = ((todayDone.pendingPenalties||{})[kid.id]||[]);
     if(kidPendingPenalties.length) _announcePenaltyWarning(kid.name, kidPendingPenalties);
+    // Confirmed penalties — announce newly confirmed ones via TTS
+    const kidConfirmedPenalties = ((todayDone.xpenalties||{})[kid.id]||[]).filter(p=>p.id);
+    if(kidConfirmedPenalties.length) _announceConfirmedPenalty(kid.name, kidConfirmedPenalties);
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
@@ -2384,7 +2413,7 @@ async function confirmPenalty(kidId, idx) {
   // Move to xpenalties
   if(!done[tk].xpenalties) done[tk].xpenalties={};
   if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
-  done[tk].xpenalties[kidId].push({pts:entry.pts, reason:entry.reason});
+  done[tk].xpenalties[kidId].push({pts:entry.pts, reason:entry.reason, id:entry.id});
   done[tk].pendingPenalties[kidId].splice(idx,1);
   await saveDone(done);
   const kid = STATE.kids.find(k=>k.id===kidId);
