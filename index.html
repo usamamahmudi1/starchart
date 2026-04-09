@@ -1297,6 +1297,7 @@
         <button class="tab-btn" onclick="switchTab('settings',this)">⚙️ Settings</button>
         <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
         <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
+        <button class="tab-btn" onclick="switchTab('log',this)">🕐 Log</button>
       </div>
       <button class="logout-btn" onclick="logout()">Logout</button>
     </div>
@@ -1499,6 +1500,12 @@
         <div id="money-content"></div>
       </div>
 
+      <!-- LOG TAB -->
+      <div id="tab-log" style="display:none">
+        <div class="section-title">🕐 Task Log</div>
+        <div id="log-content"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1543,7 +1550,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{} };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[] };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1588,6 +1595,7 @@ function scheduleRender(docId) {
       if(tabName.includes('Settings')) renderLevelsEditor();
       if(tabName.includes('History'))  renderHistoryTab();
       if(tabName.includes('Money'))    renderMoneyTab();
+      if(tabName.includes('Log'))      renderLogTab();
     }
     // Update pending badge on mark tab button regardless of active tab
     updatePendingBadge();
@@ -1721,7 +1729,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending','bonuses'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -1738,6 +1746,7 @@ function startListeners() {
       if(docId === 'pending')  { STATE.pending  = data.requests || {}; }
       if(docId === 'spending') { STATE.spending = data.records  || {}; }
       if(docId === 'bonuses')  { STATE.bonuses  = data.records  || {}; }
+      if(docId === 'tasklog')  { STATE.taskLog  = data.entries  || []; }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -1758,6 +1767,18 @@ async function saveStellarKeyFb(key) { STATE.stellarKey=key; await fbSet('settin
 async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
 async function saveSpending(s)    { STATE.spending=s;   await fbSet('spending', { records: s }); }
 async function saveBonuses(b)     { STATE.bonuses=b;    await fbSet('bonuses',  { records: b }); }
+async function saveTaskLog(entries) {
+  const cutoff = Date.now() - 7*24*60*60*1000;
+  const cleaned = entries.filter(e => e.ts > cutoff);
+  STATE.taskLog = cleaned;
+  await fbSet('tasklog', { entries: cleaned });
+}
+async function addTaskLogEntry(kidId, taskName, by) {
+  const kid = STATE.kids.find(k=>k.id===kidId);
+  const entries = (STATE.taskLog || []).slice();
+  entries.push({ kidId, kidName: kid ? kid.name : kidId, taskName, ts: Date.now(), by });
+  await saveTaskLog(entries);
+}
 
 function getData()  { return STATE; }
 function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels : DEFAULT_EMOJI_LEVELS; }
@@ -2105,7 +2126,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -2252,6 +2273,7 @@ async function adjustTask(kidId, taskId, delta, btn) {
     const t=STATE.tasks.find(t=>t.id===taskId);
     const awarded = getTaskPts(done[tk][kidId], taskId, t?t.points:0);
     toast('Awesome! ⭐ +' + awarded + 'pts');
+    addTaskLogEntry(kidId, t ? t.name : taskId, 'parent');
   }
   await saveDone(done);
 }
@@ -3040,6 +3062,7 @@ async function approveTask(kidId, taskId, count, src) {
   await Promise.all([saveDone(done), savePending(pending)]);
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast('✓ Approved! '+(kid?kid.emoji:'')+' +'+customPts*count+'pts');
+  if(task) addTaskLogEntry(kidId, task.name, 'kid');
 }
 
 async function rejectTask(kidId, taskId) {
@@ -3083,6 +3106,7 @@ async function approveDeed(kidId, encodedKey, ptsInputEl) {
   await Promise.all([saveDone(done), savePending(pending)]);
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast('✓ '+(kid?kid.emoji+' ':'')+deedDesc.slice(0,20)+' approved! +'+pts+'pts');
+  addTaskLogEntry(kidId, deedDesc, 'kid');
 }
 
 // ============ KID EDIT MODAL ============
@@ -3184,6 +3208,50 @@ function renderMoneyTab() {
   }).join('');
 }
 window.renderMoneyTab = renderMoneyTab;
+
+// ============ LOG TAB ============
+function renderLogTab() {
+  const el = document.getElementById('log-content');
+  if(!el) return;
+  const entries = (STATE.taskLog || []).slice().sort((a,b)=>b.ts-a.ts);
+  if(!entries.length) {
+    el.innerHTML = '<div class="p-card" style="opacity:0.5;font-size:0.9rem">No log entries yet. Tasks marked as done will appear here.</div>';
+    return;
+  }
+  // Group by date
+  const byDay = {};
+  entries.forEach(e => {
+    const day = new Date(e.ts).toISOString().slice(0,10);
+    if(!byDay[day]) byDay[day] = [];
+    byDay[day].push(e);
+  });
+  const days = Object.keys(byDay).sort((a,b)=>b.localeCompare(a));
+  const todayStr = todayKey();
+  el.innerHTML = days.map(day => {
+    const label = day===todayStr ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
+    const rows = byDay[day].map(e => {
+      const kid = STATE.kids.find(k=>k.id===e.kidId);
+      const col = kid ? (COLORS[kid.color]||COLORS.pink) : COLORS.pink;
+      const timeStr = new Date(e.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+      const isParent = e.by === 'parent';
+      return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.6rem;border-radius:10px;background:${isParent?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.07)'};margin-bottom:0.35rem;${isParent?'opacity:0.55':''}">
+        <div style="font-size:1.1rem;line-height:1">${kid ? kid.emoji : '⭐'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:0.85rem;font-weight:600;color:${isParent?'rgba(255,255,255,0.45)':col.main}">${escHtml(e.kidName||'?')}</div>
+          <div style="font-size:0.78rem;opacity:${isParent?'0.4':'0.7'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.taskName||'?')}</div>
+        </div>
+        <div style="font-size:0.72rem;opacity:0.45;flex-shrink:0;text-align:right">
+          <div>${timeStr}</div>
+          ${isParent ? '<div style="font-size:0.65rem;color:rgba(255,255,255,0.3);margin-top:2px">by parent</div>' : ''}
+        </div>
+      </div>`;
+    }).join('');
+    return `<div class="p-card" style="margin-bottom:1rem">
+      <div style="font-size:0.75rem;opacity:0.45;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem">${label} <span style="font-weight:400;opacity:0.6">(${byDay[day].length})</span></div>
+      ${rows}
+    </div>`;
+  }).join('');
+}
 
 // ============ HISTORY TAB ============
 function renderHistoryTab() {
@@ -3332,7 +3400,7 @@ async function historyAdjust(day, kidId, taskId, delta) {
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','approvals','tasks','kids','settings','history','money'].forEach(t=>{
+  ['mark','approvals','tasks','kids','settings','history','money','log'].forEach(t=>{
     const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
   if(name==='mark')      renderMarkTab();
@@ -3342,6 +3410,7 @@ function switchTab(name, btn) {
   if(name==='settings')  { renderLevelsEditor(); previewFormula(); _stellarSettingsInit(); }
   if(name==='history')   renderHistoryTab();
   if(name==='money')     renderMoneyTab();
+  if(name==='log')       renderLogTab();
 }
 
 
@@ -3713,7 +3782,7 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
@@ -3721,6 +3790,7 @@ async function init() {
       fbGet('pending',  { requests:{} }),
       fbGet('spending', { records:{} }),
       fbGet('bonuses',  { records:{} }),
+      fbGet('tasklog',  { entries:[] }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -3731,6 +3801,7 @@ async function init() {
     STATE.pending  = pendingData.requests  || {};
     STATE.spending = spendingData.records  || {};
     STATE.bonuses  = bonusesData.records   || {};
+    STATE.taskLog  = tasklogData.entries   || [];
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -4101,6 +4172,7 @@ window.startEditXPenalty=startEditXPenalty; window.saveXPenalty=saveXPenalty; wi
 window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.cancelDeedEdit=cancelDeedEdit; window.deleteDeed=deleteDeed;
 window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
+window.renderLogTab=renderLogTab;
 
 // ============ STELLAR AI COACH ============
 function getStellarKey() {
