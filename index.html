@@ -1865,6 +1865,121 @@ function makeStars() {
   }
 }
 
+// ══════════════════════════════════════════════════════
+// TIME-BASED REMINDERS & AUTO-WARNINGS
+// ══════════════════════════════════════════════════════
+
+// Track which kid+condition has already been handled this session
+const _reminderFlags = new Set();
+
+// Match tasks by name pattern
+function _findTaskByRole(role) {
+  const tasks = STATE.tasks;
+  if(role==='breakfast')  return tasks.find(t=>/breakfast/i.test(t.name));
+  if(role==='brushteeth') return tasks.find(t=>/brush|teeth/i.test(t.name));
+  if(role==='prayer')     return tasks.find(t=>/prayer|salah|namaz|shalat/i.test(t.name));
+  return null;
+}
+
+// Get earliest timestamp from taskLog for a kid+task on today
+function _getTaskDoneTime(kidId, taskName) {
+  const today = todayKey();
+  const matches = (STATE.taskLog||[]).filter(e=>
+    e.kidId===kidId &&
+    new Date(e.ts).toISOString().slice(0,10)===today &&
+    e.taskName===taskName
+  );
+  if(!matches.length) return null;
+  return Math.min(...matches.map(e=>e.ts));
+}
+
+// Speak a one-off reminder (separate from Stellar AI)
+function _speakReminder(text) {
+  try {
+    const doSpeak = voices => {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 0.9; utt.pitch = 1.05; utt.volume = 1;
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
+      if(pick) utt.voice = pick;
+      speechSynthesis.speak(utt);
+    };
+    const v = speechSynthesis.getVoices();
+    if(v.length) doSpeak(v);
+    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
+  } catch(e) {}
+}
+
+// Auto-add a pending penalty warning on behalf of parent (no duplicate if same reason exists today)
+async function _addAutoPenaltyWarning(kidId, pts, reason) {
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
+  if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
+  const already = done[tk].pendingPenalties[kidId].some(p=>p.reason===reason);
+  if(already) return;
+  done[tk].pendingPenalties[kidId].push({
+    pts, reason,
+    id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
+    auto: true
+  });
+  await saveDone(done);
+}
+
+function checkTimeBasedReminders() {
+  const active = document.querySelector('[id^="view-"].active');
+  if(!active || active.id!=='view-kids') return; // only fires on kids screen
+
+  const tk = todayKey();
+  const todayDone = STATE.done[tk] || {};
+  const now = Date.now();
+  const d = new Date();
+  const totalMinsNow = d.getHours()*60 + d.getMinutes();
+
+  const bfTask    = _findTaskByRole('breakfast');
+  const btTask    = _findTaskByRole('brushteeth');
+  const prTask    = _findTaskByRole('prayer');
+
+  STATE.kids.forEach(kid => {
+    const first = kid.name.split(' ')[0];
+    const kidDone = (todayDone[kid.id])||{};
+
+    // ── Condition 1: Breakfast → Brush Teeth ──
+    if(bfTask && btTask) {
+      const bfDone = (kidDone[bfTask.id]||0) > 0;
+      const btDone = (kidDone[btTask.id]||0) > 0;
+      if(bfDone && !btDone) {
+        const bfTs = _getTaskDoneTime(kid.id, bfTask.name);
+        if(bfTs) {
+          const minsSince = (now - bfTs) / 60000;
+          // 30-min verbal reminder
+          if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-brush-remind')) {
+            _reminderFlags.add(kid.id+'-brush-remind');
+            _speakReminder(`${first}! You had breakfast more than 30 minutes ago. Don't forget to brush your teeth!`);
+          }
+          // 60-min auto warning
+          if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-brush-warn')) {
+            _reminderFlags.add(kid.id+'-brush-warn');
+            _addAutoPenaltyWarning(kid.id, 5, 'Did not brush teeth within 1 hour after breakfast');
+            setTimeout(()=>_speakReminder(`${first}! A 5 point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
+          }
+        }
+      }
+    }
+
+    // ── Condition 2: 2 Prayers by 20:00 ──
+    if(prTask && totalMinsNow >= 20*60) {
+      const prayersDone = kidDone[prTask.id]||0;
+      if(prayersDone < 2 && !_reminderFlags.has(kid.id+'-prayer-warn')) {
+        _reminderFlags.add(kid.id+'-prayer-warn');
+        _addAutoPenaltyWarning(kid.id, 10, 'Did not complete 2 prayers by 8 PM');
+        setTimeout(()=>_speakReminder(`${first}! It is past 8 PM and you have not completed your 2 prayers yet. A 10 point warning has been added and a parent will confirm it.`), 1500);
+      }
+    }
+  });
+}
+
 // ── Penalty warning announcements (per session, per unique penalty id) ──
 const _warnedPenaltyIds    = new Set();
 const _confirmedPenaltyIds = new Set();
@@ -1945,6 +2060,8 @@ function renderKidsView() {
       checkLevelUp(kid.id, kid.name, pts);
       checkWalletUpdate(kid.id, pts);
     }
+    // Time-based reminders triggered on each render too (debounced by flags)
+    setTimeout(checkTimeBasedReminders, 500);
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
     const stars  = starsForPoints(pts);
@@ -3818,6 +3935,9 @@ async function init() {
   startListeners();
   // Update badge immediately after load so existing approvals show
   setTimeout(updatePendingBadge, 100);
+  // Time-based reminders — check every 60 seconds
+  setInterval(checkTimeBasedReminders, 60 * 1000);
+  setTimeout(checkTimeBasedReminders, 3000); // initial check after data settles
 
   // Load refresh setting from localStorage (device-specific preference)
   const rs = localStorage.getItem('sc_refresh')||'10';
@@ -4178,6 +4298,7 @@ window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.can
 window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
+window.checkTimeBasedReminders=checkTimeBasedReminders;
 
 // ============ STELLAR AI COACH ============
 function getStellarKey() {
