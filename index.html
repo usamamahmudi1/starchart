@@ -397,6 +397,74 @@
   .kid-tasks-scroll::-webkit-scrollbar-track { background: transparent; }
   .kid-tasks-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 2px; }
 
+  /* Prayer times button */
+  .prayer-btn {
+    position: fixed; top: 1rem; right: 1rem;
+    width: 52px; height: 52px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, rgba(255,215,0,0.25), rgba(255,140,0,0.15));
+    border: 2px solid rgba(255,215,0,0.5);
+    color: white; font-size: 1.6rem;
+    cursor: pointer; z-index: 100;
+    display: flex; align-items: center; justify-content: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 18px rgba(255,215,0,0.25);
+    transition: all 0.2s;
+  }
+  .prayer-btn:hover { transform: scale(1.1); box-shadow: 0 0 26px rgba(255,215,0,0.45); }
+
+  /* Prayer times overlay */
+  .prayer-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+    display: none; align-items: center; justify-content: center;
+    padding: 1rem;
+  }
+  .prayer-overlay.open { display: flex; }
+  .prayer-modal {
+    background: linear-gradient(160deg, #1a1040 0%, #0f1a30 100%);
+    border: 1px solid rgba(255,215,0,0.25);
+    border-radius: 28px; padding: 1.75rem 1.5rem;
+    width: 100%; max-width: 380px;
+    box-shadow: 0 0 60px rgba(255,215,0,0.12);
+    position: relative;
+  }
+  .prayer-close {
+    position: absolute; top: 1rem; right: 1rem;
+    background: rgba(255,255,255,0.08); border: none; color: white;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .prayer-title {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.5rem; color: var(--gold);
+    text-align: center; margin-bottom: 0.25rem;
+  }
+  .prayer-location {
+    font-size: 0.75rem; opacity: 0.45; text-align: center; margin-bottom: 1.25rem;
+  }
+  .prayer-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.65rem 1rem; border-radius: 14px;
+    margin-bottom: 0.5rem;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.07);
+    transition: all 0.2s;
+  }
+  .prayer-row.next {
+    background: linear-gradient(135deg, rgba(255,215,0,0.18), rgba(255,140,0,0.1));
+    border-color: rgba(255,215,0,0.45);
+    box-shadow: 0 0 16px rgba(255,215,0,0.12);
+  }
+  .prayer-row.done { opacity: 0.38; }
+  .prayer-name { font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; }
+  .prayer-time { font-size: 1rem; font-weight: 700; color: var(--gold); }
+  .prayer-row.next .prayer-time { color: #FFD700; }
+  .prayer-next-label {
+    font-size: 0.62rem; background: var(--gold); color: #1a1a2e;
+    border-radius: 999px; padding: 1px 7px; font-weight: 800; margin-left: 4px;
+  }
+
   /* Parent nav button */
   .parent-nav-btn {
     position: fixed; bottom: 1.5rem; right: 1.5rem;
@@ -1264,12 +1332,23 @@
 
 <!-- KIDS VIEW -->
 <div id="view-kids">
+  <button class="prayer-btn" onclick="openPrayerTimes()" title="Prayer Times">🕌</button>
   <div class="kids-header">
     <div class="kids-title">✨ Star Chart ✨</div>
     <div class="kids-date" id="kids-date"></div>
   </div>
   <div class="kids-grid" id="kids-grid"></div>
   <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
+</div>
+
+<!-- PRAYER TIMES OVERLAY -->
+<div class="prayer-overlay" id="prayer-overlay" onclick="if(event.target===this)closePrayerTimes()">
+  <div class="prayer-modal">
+    <button class="prayer-close" onclick="closePrayerTimes()">✕</button>
+    <div class="prayer-title">🕌 Prayer Times</div>
+    <div class="prayer-location" id="prayer-location">Detecting location…</div>
+    <div id="prayer-times-list"><div style="text-align:center;opacity:0.5;padding:1.5rem">Loading…</div></div>
+  </div>
 </div>
 
 <!-- LOGIN VIEW -->
@@ -4317,6 +4396,105 @@ async function handlePhotoUpload(kidId, input) {
   reader.readAsDataURL(file);
 }
 
+// ============ PRAYER TIMES ============
+const PRAYER_NAMES = [
+  { key:'Fajr',    icon:'🌙', label:'Fajr'    },
+  { key:'Sunrise', icon:'🌅', label:'Sunrise'  },
+  { key:'Dhuhr',   icon:'☀️', label:'Dhuhr'   },
+  { key:'Asr',     icon:'🌤️', label:'Asr'     },
+  { key:'Maghrib', icon:'🌇', label:'Maghrib'  },
+  { key:'Isha',    icon:'🌃', label:'Isha'     },
+];
+
+let _prayerCache = null; // { date, lat, lon, timings, locationName }
+
+function openPrayerTimes() {
+  document.getElementById('prayer-overlay').classList.add('open');
+  // Use cache if from today and same rough location
+  if(_prayerCache && _prayerCache.date === todayKey()) {
+    _renderPrayerTimes(_prayerCache.timings, _prayerCache.locationName);
+    return;
+  }
+  document.getElementById('prayer-location').textContent = 'Detecting location…';
+  document.getElementById('prayer-times-list').innerHTML = '<div style="text-align:center;opacity:0.5;padding:1.5rem">Loading…</div>';
+  if(!navigator.geolocation) {
+    document.getElementById('prayer-location').textContent = 'Location not available';
+    document.getElementById('prayer-times-list').innerHTML = '<div style="text-align:center;opacity:0.5;padding:1rem">Your browser does not support geolocation.</div>';
+    return;
+  }
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      const { latitude: lat, longitude: lon } = pos.coords;
+      try {
+        // Fetch prayer times from Aladhan (free, no key needed)
+        const ts = Math.floor(Date.now()/1000);
+        const res = await fetch(`https://api.aladhan.com/v1/timings/${ts}?latitude=${lat}&longitude=${lon}&method=3`);
+        const json = await res.json();
+        if(json.code !== 200) throw new Error('API error');
+        const timings = json.data.timings;
+        // Reverse geocode for city name using Nominatim
+        let locationName = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+        try {
+          const geoRes = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`);
+          const geoJson = await geoRes.json();
+          const addr = geoJson.address || {};
+          locationName = addr.city || addr.town || addr.village || addr.county || locationName;
+        } catch(e) {}
+        _prayerCache = { date: todayKey(), lat, lon, timings, locationName };
+        _renderPrayerTimes(timings, locationName);
+      } catch(e) {
+        document.getElementById('prayer-location').textContent = 'Could not load times';
+        document.getElementById('prayer-times-list').innerHTML = '<div style="text-align:center;opacity:0.5;padding:1rem">Failed to fetch prayer times. Check your connection.</div>';
+      }
+    },
+    err => {
+      document.getElementById('prayer-location').textContent = 'Location denied';
+      document.getElementById('prayer-times-list').innerHTML = '<div style="text-align:center;opacity:0.5;padding:1rem">Please allow location access to see prayer times.</div>';
+    },
+    { timeout: 10000 }
+  );
+}
+
+function _renderPrayerTimes(timings, locationName) {
+  document.getElementById('prayer-location').textContent = locationName + ' · ' + new Date().toLocaleDateString('en-US',{weekday:'long',month:'long',day:'numeric'});
+  const now = new Date();
+  const nowMins = now.getHours()*60 + now.getMinutes();
+
+  // Convert "HH:MM" string to total minutes
+  const toMins = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
+  // Format "HH:MM" to "h:MM AM/PM"
+  const fmt = t => { const [h,m] = t.split(':').map(Number); const ap=h>=12?'PM':'AM'; const h12=h%12||12; return `${h12}:${String(m).padStart(2,'0')} ${ap}`; };
+
+  // Find next prayer
+  let nextKey = null;
+  for(const p of PRAYER_NAMES) {
+    if(p.key === 'Sunrise') continue; // don't mark Sunrise as "next"
+    if(toMins(timings[p.key]) > nowMins) { nextKey = p.key; break; }
+  }
+  if(!nextKey) nextKey = 'Fajr'; // past Isha, next is tomorrow's Fajr
+
+  const rows = PRAYER_NAMES.map(p => {
+    const t = timings[p.key];
+    if(!t) return '';
+    const pMins = toMins(t);
+    const isPast = pMins < nowMins && p.key !== 'Fajr';
+    const isNext = p.key === nextKey;
+    return `<div class="prayer-row${isNext?' next':isPast?' done':''}">
+      <div class="prayer-name">
+        <span>${p.icon}</span>
+        <span>${p.label}</span>
+        ${isNext ? '<span class="prayer-next-label">NEXT</span>' : ''}
+      </div>
+      <div class="prayer-time">${fmt(t)}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('prayer-times-list').innerHTML = rows;
+}
+
+function closePrayerTimes() {
+  document.getElementById('prayer-overlay').classList.remove('open');
+}
+
 window.showView=showView; window.showLogin=showLogin; window.doLogin=doLogin; window.logout=logout;
 window.switchTab=switchTab; window.addTask=addTask; window.deleteTask=deleteTask;
 window.saveTaskEdit=saveTaskEdit; window.addKid=addKid; window.onDragStart=onDragStart; window.onDragOver=onDragOver; window.onDragLeave=onDragLeave; window.onDrop=onDrop; window.onDragEnd=onDragEnd; window.deleteKid=deleteKid;
@@ -4340,6 +4518,7 @@ window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; 
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
 window.checkTimeBasedReminders=checkTimeBasedReminders;
+window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
 
 // ============ STELLAR AI COACH ============
 function getStellarKey() {
