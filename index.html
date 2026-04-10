@@ -2016,6 +2016,25 @@ async function _addAutoPenaltyWarning(kidId, pts, reason) {
   await saveDone(done);
 }
 
+// Silently fetch prayer times for the reminder system (no UI shown)
+let _fetchingPrayerBg = false;
+async function _fetchPrayerTimesBackground() {
+  if(_fetchingPrayerBg) return;
+  if(!navigator.geolocation) return;
+  _fetchingPrayerBg = true;
+  try {
+    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout:8000}));
+    const { latitude: lat, longitude: lon } = pos.coords;
+    const ts = Math.floor(Date.now()/1000);
+    const r = await fetch(`https://api.aladhan.com/v1/timings/${ts}?latitude=${lat}&longitude=${lon}&method=3`);
+    const j = await r.json();
+    if(j.code === 200) {
+      _prayerCache = { date: todayKey(), lat, lon, timings: j.data.timings, locationName: _prayerCache?.locationName || '' };
+    }
+  } catch(e) {}
+  _fetchingPrayerBg = false;
+}
+
 function checkTimeBasedReminders() {
   const active = document.querySelector('[id^="view-"].active');
   if(!active || active.id!=='view-kids') return; // only fires on kids screen
@@ -2026,11 +2045,16 @@ function checkTimeBasedReminders() {
   const d = new Date();
   const totalMinsNow = d.getHours()*60 + d.getMinutes();
 
-  const bfTask    = _findTaskByRole('breakfast');
-  const btTask    = _findTaskByRole('brushteeth');
-  const dinTask   = _findTaskByRole('dinner');
-  const btdTask   = _findTaskByRole('brushteeth-dinner');
-  const prTask    = _findTaskByRole('prayer');
+  const bfTask  = _findTaskByRole('breakfast');
+  const btTask  = _findTaskByRole('brushteeth');
+  const dinTask = _findTaskByRole('dinner');
+  const btdTask = _findTaskByRole('brushteeth-dinner');
+
+  // Helper: "HH:MM" → total minutes since midnight
+  const toMins = t => { if(!t) return -1; const [h,m]=(t||'').split(':').map(Number); return h*60+m; };
+
+  // Silently ensure prayer times are fetched for time-based checks
+  if(!_prayerCache || _prayerCache.date !== todayKey()) _fetchPrayerTimesBackground();
 
   STATE.kids.forEach(kid => {
     const first = kid.name.split(' ')[0];
@@ -2044,12 +2068,10 @@ function checkTimeBasedReminders() {
         const bfTs = _getTaskDoneTime(kid.id, bfTask.name);
         if(bfTs) {
           const minsSince = (now - bfTs) / 60000;
-          // 30-min verbal reminder
           if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-brush-remind')) {
             _reminderFlags.add(kid.id+'-brush-remind');
             _speakReminder(`${first}! You had breakfast more than 30 minutes ago. Don't forget to brush your teeth!`);
           }
-          // 60-min auto warning
           if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-brush-warn')) {
             _reminderFlags.add(kid.id+'-brush-warn');
             _addAutoPenaltyWarning(kid.id, 5, 'Did not brush teeth within 1 hour after breakfast');
@@ -2059,7 +2081,7 @@ function checkTimeBasedReminders() {
       }
     }
 
-    // ── Condition 3: Dinner → Brush Teeth after Dinner ──
+    // ── Condition 2: Dinner → Brush Teeth after Dinner ──
     if(dinTask && btdTask) {
       const dinDone = (kidDone[dinTask.id]||0) > 0;
       const btdDone = (kidDone[btdTask.id]||0) > 0;
@@ -2067,12 +2089,10 @@ function checkTimeBasedReminders() {
         const dinTs = _getTaskDoneTime(kid.id, dinTask.name);
         if(dinTs) {
           const minsSince = (now - dinTs) / 60000;
-          // 30-min verbal reminder
           if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-btd-remind')) {
             _reminderFlags.add(kid.id+'-btd-remind');
             _speakReminder(`${first}! It's been more than 30 minutes since dinner. Don't forget to brush your teeth!`);
           }
-          // 60-min auto warning
           if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-btd-warn')) {
             _reminderFlags.add(kid.id+'-btd-warn');
             _addAutoPenaltyWarning(kid.id, 7, 'Did not brush teeth within 1 hour after dinner');
@@ -2082,16 +2102,36 @@ function checkTimeBasedReminders() {
       }
     }
 
-    // ── Condition 2: 2 Prayers by 20:00 ──
-    if(prTask && totalMinsNow >= 20*60) {
-      const prayersDone = kidDone[prTask.id]||0;
-      if(prayersDone < 2 && !_reminderFlags.has(kid.id+'-prayer-warn')) {
-        _reminderFlags.add(kid.id+'-prayer-warn');
-        _addAutoPenaltyWarning(kid.id, 10, 'Did not complete 2 prayers by 8 PM');
-        setTimeout(()=>_speakReminder(`${first}! It is past 8 PM and you have not completed your 2 prayers yet. A 10 point warning has been added and a parent will confirm it.`), 1500);
-      }
+    // ── Condition 3: 40 mins before Asr, Maghrib, Isha → warning ──
+    if(_prayerCache && _prayerCache.date === todayKey()) {
+      const t = _prayerCache.timings;
+      [['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
+        const pm = toMins(t[key]);
+        if(pm < 0) return;
+        const minsUntil = pm - totalMinsNow;
+        // Window: between 42 and 38 mins before (catches any 60-s interval tick near T-40)
+        if(minsUntil >= 38 && minsUntil <= 42 && !_reminderFlags.has(kid.id+'-pre40-'+key)) {
+          _reminderFlags.add(kid.id+'-pre40-'+key);
+          _addAutoPenaltyWarning(kid.id, 5, `Did not prepare for ${label} prayer — warning added 40 minutes before`);
+          setTimeout(()=>_speakReminder(`${first}! ${label} prayer is in about 40 minutes. Please get ready for prayer. A 5 point warning has been added.`), 800);
+        }
+      });
     }
   });
+
+  // ── Prayer time call to prayer (Adhan announcement) — global, not per kid ──
+  if(_prayerCache && _prayerCache.date === todayKey()) {
+    const t = _prayerCache.timings;
+    [['Fajr','Fajr'],['Dhuhr','Dhuhr'],['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
+      const pm = toMins(t[key]);
+      if(pm < 0) return;
+      // Announce within a 2-minute window of prayer start
+      if(totalMinsNow >= pm && totalMinsNow <= pm+1 && !_reminderFlags.has('global-adhan-'+key)) {
+        _reminderFlags.add('global-adhan-'+key);
+        _speakReminder(`It is time for ${label} Prayer. Allahu Akbar.`);
+      }
+    });
+  }
 }
 
 // ── Penalty warning announcements (per session, per unique penalty id) ──
@@ -4058,6 +4098,7 @@ async function init() {
   // Time-based reminders — check every 60 seconds
   setInterval(checkTimeBasedReminders, 60 * 1000);
   setTimeout(checkTimeBasedReminders, 3000); // initial check after data settles
+  setTimeout(_fetchPrayerTimesBackground, 5000); // pre-load prayer times silently
 
   // Load refresh setting from localStorage (device-specific preference)
   const rs = localStorage.getItem('sc_refresh')||'10';
