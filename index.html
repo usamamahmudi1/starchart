@@ -1882,9 +1882,12 @@ const _reminderFlags = new Set();
 // Match tasks by name pattern
 function _findTaskByRole(role) {
   const tasks = STATE.tasks;
-  if(role==='breakfast')  return tasks.find(t=>/breakfast/i.test(t.name));
-  if(role==='brushteeth') return tasks.find(t=>/brush|teeth/i.test(t.name));
-  if(role==='prayer')     return tasks.find(t=>/prayer|salah|namaz|shalat/i.test(t.name));
+  if(role==='breakfast')       return tasks.find(t=>/breakfast/i.test(t.name));
+  if(role==='brushteeth')      return tasks.find(t=>/brush.*teeth(?!.*dinner)|teeth.*brush(?!.*dinner)|^brush teeth$/i.test(t.name))
+                                    || tasks.find(t=>/brush|teeth/i.test(t.name) && !/dinner/i.test(t.name));
+  if(role==='dinner')          return tasks.find(t=>/dinner/i.test(t.name) && !/brush|teeth/i.test(t.name));
+  if(role==='brushteeth-dinner') return tasks.find(t=>/dinner/i.test(t.name) && /brush|teeth/i.test(t.name));
+  if(role==='prayer')          return tasks.find(t=>/prayer|salah|namaz|shalat/i.test(t.name));
   return null;
 }
 
@@ -1946,6 +1949,8 @@ function checkTimeBasedReminders() {
 
   const bfTask    = _findTaskByRole('breakfast');
   const btTask    = _findTaskByRole('brushteeth');
+  const dinTask   = _findTaskByRole('dinner');
+  const btdTask   = _findTaskByRole('brushteeth-dinner');
   const prTask    = _findTaskByRole('prayer');
 
   STATE.kids.forEach(kid => {
@@ -1970,6 +1975,29 @@ function checkTimeBasedReminders() {
             _reminderFlags.add(kid.id+'-brush-warn');
             _addAutoPenaltyWarning(kid.id, 5, 'Did not brush teeth within 1 hour after breakfast');
             setTimeout(()=>_speakReminder(`${first}! A 5 point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
+          }
+        }
+      }
+    }
+
+    // ── Condition 3: Dinner → Brush Teeth after Dinner ──
+    if(dinTask && btdTask) {
+      const dinDone = (kidDone[dinTask.id]||0) > 0;
+      const btdDone = (kidDone[btdTask.id]||0) > 0;
+      if(dinDone && !btdDone) {
+        const dinTs = _getTaskDoneTime(kid.id, dinTask.name);
+        if(dinTs) {
+          const minsSince = (now - dinTs) / 60000;
+          // 30-min verbal reminder
+          if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-btd-remind')) {
+            _reminderFlags.add(kid.id+'-btd-remind');
+            _speakReminder(`${first}! It's been more than 30 minutes since dinner. Don't forget to brush your teeth!`);
+          }
+          // 60-min auto warning
+          if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-btd-warn')) {
+            _reminderFlags.add(kid.id+'-btd-warn');
+            _addAutoPenaltyWarning(kid.id, 7, 'Did not brush teeth within 1 hour after dinner');
+            setTimeout(()=>_speakReminder(`${first}! A 7 point warning has been added because you didn't brush your teeth after dinner. A parent will confirm it.`), 1500);
           }
         }
       }
