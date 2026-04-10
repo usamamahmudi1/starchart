@@ -1611,7 +1611,7 @@ function updatePendingBadge() {
   const pending = STATE.pending || {};
   let total = 0;
   Object.values(pending).forEach(taskIds => {
-    Object.values(taskIds).forEach(c => { total += (c||0); });
+    Object.entries(taskIds).forEach(([k,c]) => { if(k!=='_ts' && typeof c==='number') total += c; });
   });
   // Count pending penalties
   const tk = todayKey();
@@ -1679,17 +1679,19 @@ function renderApprovalsTab() {
     const kid = kids.find(k=>k.id===kidId);
     if(!kid) return '';
     const col = COLORS[kid.color]||COLORS.pink;
-    const taskRows = Object.entries(taskIds).filter(([,c])=>c>0).map(([taskId, count]) => {
+    const tsTimes = taskIds._ts || {};
+    const taskRows = Object.entries(taskIds).filter(([k,c])=>k!=='_ts'&&c>0).map(([taskId, count]) => {
       // Custom deed: key starts with 'deed:'
       if(taskId.startsWith('deed:')) {
         const parts = taskId.split(':');
+        const deedTs = parseInt(parts[1])||0;
         const deedDesc = parts.slice(2).join(':');
-        // Use a numeric index as safe DOM id to avoid apostrophe/special-char issues in onclick
+        const tsStr = deedTs ? new Date(deedTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
         const deedIdx = `${kid.id}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
         return `<div class="approval-task-row" style="border:1px dashed rgba(255,215,0,0.3);background:rgba(255,215,0,0.05)">
           <div style="flex:1">
             <div class="approval-task-name">✨ ${escHtml(deedDesc)}</div>
-            <div style="font-size:0.75rem;opacity:0.5;margin-top:2px">New good deed — set points to approve</div>
+            <div style="font-size:0.75rem;opacity:0.5;margin-top:2px">New good deed — set points to approve${tsStr?' · suggested '+tsStr:''}</div>
           </div>
           <input class="form-input" id="deed-pts-${deedIdx}" type="number" min="1" placeholder="pts"
             style="width:60px;text-align:center;padding:0.3rem 0.4rem;font-size:0.85rem">
@@ -1703,8 +1705,13 @@ function renderApprovalsTab() {
       }
       const task = tasks.find(t=>t.id===taskId);
       if(!task) return '';
+      const tsMs = tsTimes[taskId];
+      const tsStr = tsMs ? new Date(tsMs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
       return `<div class="approval-task-row">
-        <span class="approval-task-name">${escHtml(task.name)}</span>
+        <div style="flex:1;min-width:0">
+          <span class="approval-task-name">${escHtml(task.name)}</span>
+          ${tsStr ? `<div style="font-size:0.72rem;opacity:0.45;margin-top:1px">suggested ${tsStr}</div>` : ''}
+        </div>
         <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
           <input class="pts-override-input" type="number" min="0" max="${task.points}"
             id="tappr-pts-${kid.id}-${task.id}" value="${task.points}"
@@ -2263,14 +2270,17 @@ function renderMarkTab() {
   Object.entries(pending).forEach(([kidId, taskIds])=>{
     const kid = kids.find(k=>k.id===kidId); if(!kid) return;
     const col = COLORS[kid.color]||COLORS.pink;
+    const tsTimes = taskIds._ts || {};
     Object.entries(taskIds).forEach(([taskId, count])=>{
-      if(!count) return;
+      if(taskId==='_ts' || !count || typeof count!=='number') return;
       const task = tasks.find(t=>t.id===taskId); if(!task) return;
+      const tsMs = tsTimes[taskId];
+      const tsStr = tsMs ? new Date(tsMs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
       pendingRows.push(`<div class="approval-row">
         <div class="kid-avatar" style="width:32px;height:32px;font-size:1.1rem;background:linear-gradient(135deg,${col.grad});border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0">${kid.emoji||'⭐'}</div>
         <div class="approval-info">
           <div class="approval-name">${escHtml(kid.name)}</div>
-          <div class="approval-task">${escHtml(task.name)} × ${count}</div>
+          <div class="approval-task">${escHtml(task.name)} × ${count}${tsStr?' <span style="opacity:0.5;font-size:0.75rem">· '+tsStr+'</span>':''}</div>
         </div>
         <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
           <input class="pts-override-input" type="number" min="0" max="${task.points}"
@@ -3077,6 +3087,9 @@ async function suggestTask(kidId, taskId, el) {
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(!pending[kidId]) pending[kidId]={};
   pending[kidId][taskId] = (pending[kidId][taskId]||0)+1;
+  // Store suggestion timestamp (used for display in parent approvals)
+  if(!pending[kidId]._ts) pending[kidId]._ts={};
+  if(!pending[kidId]._ts[taskId]) pending[kidId]._ts[taskId] = Date.now();
   await savePending(pending);
 
   const kid  = STATE.kids.find(k=>k.id===kidId);
@@ -3184,7 +3197,7 @@ async function approveTask(kidId, taskId, count, src) {
   await Promise.all([saveDone(done), savePending(pending)]);
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast('✓ Approved! '+(kid?kid.emoji:'')+' +'+customPts*count+'pts');
-  if(task) addTaskLogEntry(kidId, task.name, 'kid');
+  await addTaskLogEntry(kidId, task ? task.name : taskId, 'kid');
 }
 
 async function rejectTask(kidId, taskId) {
@@ -3228,7 +3241,7 @@ async function approveDeed(kidId, encodedKey, ptsInputEl) {
   await Promise.all([saveDone(done), savePending(pending)]);
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast('✓ '+(kid?kid.emoji+' ':'')+deedDesc.slice(0,20)+' approved! +'+pts+'pts');
-  addTaskLogEntry(kidId, deedDesc, 'kid');
+  await addTaskLogEntry(kidId, deedDesc, 'kid');
 }
 
 // ============ KID EDIT MODAL ============
