@@ -1860,8 +1860,8 @@ const DEFAULT_WARNING_RULES = [
   { id:'brush-dinner',    name:'Brush Teeth after Dinner',           enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:7,
     triggerTaskId:'', conditionTaskId:'',
     formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
-  { id:'prayer-pre',      name:'Prayer Reminder (Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsBeforePrayer:40, pts:5,
-    formula:'If the previous obligatory prayer was not done and only {minsBeforePrayer} min remain before the next prayer (Asr, Maghrib or Isha), add a {pts}-point warning.' },
+  { id:'prayer-pre',      name:'Missed Prayer Warning (Dhuhr/Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsAfterPrayer:40, pts:5,
+    formula:'If {minsAfterPrayer} minutes have passed since a prayer time (Dhuhr, Asr, Maghrib or Isha) and the prayer has not been done, add a {pts}-point warning.' },
 ];
 
 let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[], warningRules:[] };
@@ -2430,20 +2430,20 @@ function checkTimeBasedReminders() {
       }
     }
 
-    // ── Condition 3: N mins before Asr/Maghrib/Isha → warn about the PREVIOUS prayer ──
+    // ── Condition 3: N mins AFTER Dhuhr/Asr/Maghrib/Isha → warn if prayer not done ──
     const rPrayer = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='prayer-pre');
     if(rPrayer && rPrayer.enabled !== false && _prayerCache && _prayerCache.date === todayKey()) {
-      const mbp  = rPrayer.minsBeforePrayer || 40;
+      const map  = rPrayer.minsAfterPrayer || rPrayer.minsBeforePrayer || 40; // backwards compat
       const pts  = rPrayer.pts || 5;
-      const half = Math.max(2, Math.round(mbp * 0.05)); // ±window (5% of lead time, min 2)
+      const half = Math.max(2, Math.round(map * 0.05)); // ±window (5% of grace, min 2 min)
       const t    = _prayerCache.timings;
-      [['Asr','Asr','Dhuhr'],['Maghrib','Maghrib','Asr'],['Isha','Isha','Maghrib']].forEach(([key, upLabel, prevLabel]) => {
+      [['Dhuhr','Dhuhr'],['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
         const pm = toMins(t[key]);
         if(pm < 0) return;
-        const minsUntil = pm - totalMinsNow;
-        const flagKey   = kid.id+'-pre'+mbp+'-'+key;
-        const warnReason = `Did not pray ${prevLabel} — only ${mbp} minutes left before ${upLabel}`;
-        if(minsUntil >= mbp-half && minsUntil <= mbp+half && !_reminderFlags.has(flagKey)) {
+        const minsAfter = totalMinsNow - pm; // positive when prayer time has already passed
+        const flagKey   = kid.id+'-post'+map+'-'+key;
+        const warnReason = `Did not pray ${label} — ${map} minutes have passed since ${label} prayer time`;
+        if(minsAfter >= map-half && minsAfter <= map+half && !_reminderFlags.has(flagKey)) {
           _persistFlag(flagKey);
           _addAutoPenaltyWarning(kid.id, pts, warnReason);
           // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
@@ -5653,7 +5653,7 @@ function renderWarningsTab() {
           <div><label class="form-label" style="font-size:0.7rem">Rule type</label>
             <select class="form-input" id="nwr-type" style="width:100%" onchange="handleNwrType()">
               <option value="brush">⏱ After task — if another task not done within time limit</option>
-              <option value="prayer">🕌 Prayer time — minutes before next prayer</option>
+              <option value="prayer">🕌 Prayer time — minutes after prayer starts</option>
             </select>
           </div>
           <div id="nwr-brush-fields">
@@ -5675,8 +5675,8 @@ function renderWarningsTab() {
             </div>
           </div>
           <div id="nwr-prayer-fields" style="display:none">
-            <div><label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
-              <input class="form-input" type="number" min="1" id="nwr-minsBeforePrayer" value="40" style="width:80px"></div>
+            <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
+              <input class="form-input" type="number" min="1" id="nwr-minsAfterPrayer" value="40" style="width:80px"></div>
           </div>
           <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
             <input class="form-input" type="number" min="1" id="nwr-pts" value="5" style="width:80px"></div>
@@ -5722,8 +5722,8 @@ function renderWarningsTab() {
       </div>`
     : isPrayer ? `
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
-        <div><label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
-          <input class="form-input" type="number" min="1" id="wr-minsBeforePrayer-${idx}" value="${rule.minsBeforePrayer||40}" style="width:80px"></div>
+        <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
+          <input class="form-input" type="number" min="1" id="wr-minsAfterPrayer-${idx}" value="${rule.minsAfterPrayer||rule.minsBeforePrayer||40}" style="width:80px"></div>
         <div><label class="form-label" style="font-size:0.7rem">Points</label>
           <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px"></div>
       </div>` : '';
@@ -5796,7 +5796,7 @@ async function addWarningRule() {
     rule.warnMins   = parseInt(document.getElementById('nwr-warnMins')?.value||'60')   || 60;
   }
   if(type === 'prayer') {
-    rule.minsBeforePrayer = parseInt(document.getElementById('nwr-minsBeforePrayer')?.value||'40') || 40;
+    rule.minsAfterPrayer = parseInt(document.getElementById('nwr-minsAfterPrayer')?.value||'40') || 40;
   }
 
   const rules = [...(STATE.warningRules||[]), rule];
@@ -5845,7 +5845,7 @@ async function saveWarningRule(idx) {
     rule.conditionTaskId  = cond.taskId;    rule.conditionTaskName= cond.taskName;
   }
   if(rule.type === 'prayer') {
-    rule.minsBeforePrayer = parseInt(document.getElementById(`wr-minsBeforePrayer-${idx}`)?.value) || rule.minsBeforePrayer;
+    rule.minsAfterPrayer = parseInt(document.getElementById(`wr-minsAfterPrayer-${idx}`)?.value) || rule.minsAfterPrayer || rule.minsBeforePrayer || 40;
   }
   await saveWarningRules(rules);
   try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
