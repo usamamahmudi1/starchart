@@ -85,17 +85,17 @@
   }
   .clock-digital-12 {
     font-family: 'Fredoka One', cursive;
-    font-size: clamp(1.1rem, 3vw, 1.55rem);
+    font-size: clamp(1rem, 2.8vw, 1.3rem);
     letter-spacing: 0.04em;
-    line-height: 1;
+    line-height: 1.15;
     white-space: nowrap;
   }
   .clock-digital-24 {
     font-family: 'Nunito', sans-serif;
     font-weight: 700;
-    font-size: clamp(0.78rem, 2vw, 1rem);
+    font-size: clamp(1rem, 2.8vw, 1.3rem);
     letter-spacing: 0.06em;
-    opacity: 0.6;
+    opacity: 0.7;
     white-space: nowrap;
   }
 
@@ -996,6 +996,13 @@
     .kid-points-display { font-size: 2.5rem; }
     .parent-header { padding: 0.6rem 1rem 0.5rem; }
     .parent-content { padding: 1rem; }
+    /* Shrink clock components on mobile so they don't squeeze the title */
+    .clock-canvas { width: 72px !important; height: 72px !important; }
+    .clock-analog-wrap { flex-shrink: 1; }
+    .clock-digital-wrap { min-width: 68px; flex-shrink: 1; }
+    .clock-digital-12, .clock-digital-24 { font-size: clamp(0.75rem, 3.5vw, 1rem); }
+    .kids-header { padding: 0.7rem 0.4rem 0.5rem; gap: 0.25rem; }
+    .kids-title { font-size: clamp(1.2rem, 6vw, 2rem); }
   }
 
   /* Sync indicator */
@@ -2126,7 +2133,16 @@ function showView(v) {
   const showBtns = (v === 'kids' || v === 'parent');
   const pBtn = document.getElementById('prayer-btn');
   const cBtn = document.getElementById('chat-btn');
-  if(pBtn) pBtn.style.display = showBtns ? 'flex' : 'none';
+  if(pBtn) {
+    pBtn.style.display = showBtns ? 'flex' : 'none';
+    // On parent view the sticky header has the logout btn at top-right,
+    // so push the mosque icon below it to avoid overlap
+    if(v === 'parent') {
+      pBtn.style.top = '4.5rem';
+    } else {
+      pBtn.style.top = '1rem';
+    }
+  }
   if(cBtn) cBtn.style.display = showBtns ? 'flex' : 'none';
   // Only render if init has completed — listeners handle rendering during init
   if(!STATE._ready) return;
