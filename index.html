@@ -2480,31 +2480,40 @@ function _announceConfirmedPenalty(kidName, penalties) {
   if(!newOnes.length) return;
   newOnes.forEach(p=>_confirmedPenaltyIds.add(p.id));
   const first = kidName.split(' ')[0];
-  newOnes.forEach(p => {
-    const ores = (p.pts * ORE_PER_PT).toFixed(1);
-    const text = `${first}, ${p.pts} point${p.pts!==1?'s':''} have been deducted${p.reason?' for '+p.reason:''}. ${ores} Öres have also been deducted from your account.`;
-    try {
-      const doSpeak = voices => {
-        const utt = new SpeechSynthesisUtterance(text);
-        utt.rate = 0.92; utt.pitch = 1.0; utt.volume = 1;
-        const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-                  || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-        if(pick) utt.voice = pick;
-        setTimeout(()=>speechSynthesis.speak(utt), 200);
-      };
-      const v = speechSynthesis.getVoices();
-      if(v.length) doSpeak(v);
-      else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
-    } catch(e) {}
-  });
+  // Build ONE combined utterance for all new confirmed penalties (avoids multiple speeches)
+  const totalPts = newOnes.reduce((s,p)=>s+(p.pts||0), 0);
+  const ores = (totalPts * ORE_PER_PT).toFixed(1);
+  let text;
+  if(newOnes.length === 1) {
+    const p = newOnes[0];
+    text = `${first}, ${p.pts} point${p.pts!==1?'s':''} have been deducted${p.reason?' for '+p.reason:''}. ${ores} Öres have also been deducted from your account.`;
+  } else {
+    const reasons = newOnes.map(p=>`${p.pts} points for ${p.reason||'a deduction'}`).join(', and ');
+    text = `${first}, a total of ${totalPts} points have been deducted: ${reasons}. ${ores} Öres have been deducted from your account.`;
+  }
+  try {
+    const doSpeak = voices => {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 0.92; utt.pitch = 1.0; utt.volume = 1;
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
+      if(pick) utt.voice = pick;
+      setTimeout(()=>speechSynthesis.speak(utt), 200);
+    };
+    const v = speechSynthesis.getVoices();
+    if(v.length) doSpeak(v);
+    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
+  } catch(e) {}
 }
 
 function _announcePenaltyWarning(kidName, penalties) {
   const newOnes = penalties.filter(p=>!_warnedPenaltyIds.has(p.id));
   if(!newOnes.length) return;
+  // Mark ALL as warned before speaking so no re-entry on concurrent renders
   newOnes.forEach(p=>_warnedPenaltyIds.add(p.id));
   const first = kidName.split(' ')[0];
-  const reasons = newOnes.map(p=>p.reason||'a deduction').join(' and ');
+  // Single combined utterance
+  const reasons = newOnes.map(p=>p.reason||'a deduction').join(', and ');
   const text = `${first}, you have a warning! ${reasons}. A parent needs to confirm this.`;
   try {
     const doSpeak = voices => {
@@ -2551,9 +2560,6 @@ function renderKidsView() {
       checkLevelUp(kid.id, kid.name, pts);
       checkWalletUpdate(kid.id, pts);
     }
-    // Time-based reminders + announcements triggered on each render too
-    setTimeout(checkTimeBasedReminders, 500);
-    setTimeout(checkPendingAnnouncements, 300);
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
     const stars  = starsForPoints(pts);
@@ -2729,6 +2735,9 @@ function renderKidsView() {
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
   }).join('');
+  // Time-based reminders + pending announcements — fire ONCE per render, not once per kid
+  setTimeout(checkTimeBasedReminders, 500);
+  setTimeout(checkPendingAnnouncements, 300);
   // Scroll each level strip so the current level chip is centred
   const { kids: ks2 } = getData();
   ks2.forEach(k => {
