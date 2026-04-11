@@ -2067,7 +2067,7 @@ function startListeners() {
       if(docId === 'tasklog')       { STATE.taskLog      = data.entries || []; }
       if(docId === 'announcements') { STATE.announcements = data.items    || []; }
       if(docId === 'chat')          { STATE.chat          = data.messages || []; _updateChatUnread(); }
-      if(docId === 'warningrules')  { STATE.warningRules  = data.rules     || DEFAULT_WARNING_RULES.map(r=>({...r})); }
+      if(docId === 'warningrules')  { STATE.warningRules  = data._v !== undefined ? (data.rules||[]) : DEFAULT_WARNING_RULES.map(r=>({...r})); }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -2100,7 +2100,7 @@ async function saveTaskLog(entries) {
 }
 async function saveWarningRules(rules) {
   STATE.warningRules = rules;
-  await fbSet('warningrules', { rules });
+  await fbSet('warningrules', { _v: 1, rules }); // _v sentinel: doc exists but may have 0 rules
 }
 async function saveChat(messages) {
   const cutoff = Date.now() - 2*24*60*60*1000;
@@ -2345,11 +2345,21 @@ function checkTimeBasedReminders() {
     const first = kid.name.split(' ')[0];
     const kidDone = (todayDone[kid.id])||{};
 
+    // Helper: resolve a task by saved ID, then saved name, then auto-detect fallback
+    const resolveTask = (taskId, taskName, fallback) => {
+      if(taskId)   return STATE.tasks.find(t=>t.id===taskId) || fallback;
+      if(taskName) return STATE.tasks.find(t=>t.name.toLowerCase()===taskName.toLowerCase())
+                       || STATE.tasks.find(t=>t.name.toLowerCase().includes(taskName.toLowerCase()))
+                       || fallback;
+      return fallback;
+    };
+
     // ── Condition 1: Breakfast → Brush Teeth (morning) ──
     const rBrushBf = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-breakfast');
-    // Allow rule to override which tasks to watch; fall back to name-based detection
-    if(rBrushBf?.triggerTaskId)   bfTask  = STATE.tasks.find(t=>t.id===rBrushBf.triggerTaskId)   || bfTask;
-    if(rBrushBf?.conditionTaskId) btTask  = STATE.tasks.find(t=>t.id===rBrushBf.conditionTaskId) || btTask;
+    if(rBrushBf) {
+      bfTask = resolveTask(rBrushBf.triggerTaskId,   rBrushBf.triggerTaskName,   bfTask);
+      btTask = resolveTask(rBrushBf.conditionTaskId, rBrushBf.conditionTaskName, btTask);
+    }
     if(rBrushBf && rBrushBf.enabled !== false && bfTask && btTask) {
       const bfDone = (kidDone[bfTask.id]||0) > 0;
       const btDone = (kidDone[btTask.id]||0) > 0;
@@ -2376,8 +2386,10 @@ function checkTimeBasedReminders() {
 
     // ── Condition 2: Dinner → Brush Teeth after Dinner ──
     const rBrushDin = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-dinner');
-    if(rBrushDin?.triggerTaskId)   dinTask  = STATE.tasks.find(t=>t.id===rBrushDin.triggerTaskId)   || dinTask;
-    if(rBrushDin?.conditionTaskId) btdTask  = STATE.tasks.find(t=>t.id===rBrushDin.conditionTaskId) || btdTask;
+    if(rBrushDin) {
+      dinTask = resolveTask(rBrushDin.triggerTaskId,   rBrushDin.triggerTaskName,   dinTask);
+      btdTask = resolveTask(rBrushDin.conditionTaskId, rBrushDin.conditionTaskName, btdTask);
+    }
     if(rBrushDin && rBrushDin.enabled !== false && dinTask && btdTask) {
       const dinDone = (kidDone[dinTask.id]||0) > 0;
       const btdDone = (kidDone[btdTask.id]||0) > 0;
@@ -4670,8 +4682,8 @@ async function init() {
     STATE.taskLog      = tasklogData.entries    || [];
     STATE.announcements = announcementsData.items || [];
     STATE.chat          = chatData.messages || [];
-    STATE.warningRules  = (warningRulesData.rules && warningRulesData.rules.length)
-                          ? warningRulesData.rules
+    STATE.warningRules  = warningRulesData._v !== undefined
+                          ? (warningRulesData.rules || [])
                           : DEFAULT_WARNING_RULES.map(r=>({...r}));
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
@@ -5361,6 +5373,7 @@ window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; 
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
 window.renderWarningsTab=renderWarningsTab; window.issueManualWarning=issueManualWarning; window.saveWarningRule=saveWarningRule;
+window.handleWrTaskSel=handleWrTaskSel; window.handleNwrType=handleNwrType; window.deleteWarningRule=deleteWarningRule; window.addWarningRule=addWarningRule;
 window.checkTimeBasedReminders=checkTimeBasedReminders;
 // ============ CHAT ============
 let _chatKidId = null; // which kid is chatting (kids view only)
@@ -5555,12 +5568,38 @@ function startChatVoice() {
 
 window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
 // ============ WARNINGS TAB ============
+// ── Task selector helper: list + custom name option ──
+function _wrTaskSelectHtml(fieldId, selTaskId, customName) {
+  const isCustom = !selTaskId && !!customName;
+  const selVal   = selTaskId || (isCustom ? '__custom__' : '');
+  const opts = `<option value="" ${!selVal?'selected':''}>— auto-detect by task name —</option>`
+    + (STATE.tasks||[]).map(t=>`<option value="${escHtml(t.id)}" ${selTaskId===t.id?'selected':''}>${escHtml(t.name)}</option>`).join('')
+    + `<option value="__custom__" ${isCustom?'selected':''}>✏️ Enter task name manually…</option>`;
+  return `<select class="form-input" id="${fieldId}-sel" style="width:100%" onchange="handleWrTaskSel('${fieldId}')">${opts}</select>
+    <input class="form-input" id="${fieldId}-txt" placeholder="Type task name…" value="${escHtml(customName||'')}"
+      style="width:100%;margin-top:0.3rem;${isCustom?'':'display:none'}">`;
+}
+
+function handleWrTaskSel(fieldId) {
+  const sel = document.getElementById(fieldId+'-sel');
+  const txt = document.getElementById(fieldId+'-txt');
+  if(sel && txt) txt.style.display = sel.value === '__custom__' ? '' : 'none';
+}
+
+// ── Read task select back into {taskId, taskName} ──
+function _readWrTask(fieldId) {
+  const sel = document.getElementById(fieldId+'-sel');
+  const txt = document.getElementById(fieldId+'-txt');
+  if(!sel) return { taskId:'', taskName:'' };
+  if(sel.value === '__custom__') return { taskId:'', taskName:(txt?.value||'').trim() };
+  return { taskId: sel.value, taskName: '' };
+}
+
 function renderWarningsTab() {
   const el = document.getElementById('warnings-content');
   if(!el) return;
-  const kids = STATE.kids || [];
-  const rules = STATE.warningRules && STATE.warningRules.length
-    ? STATE.warningRules : DEFAULT_WARNING_RULES.map(r=>({...r}));
+  const kids  = STATE.kids  || [];
+  const rules = STATE.warningRules || [];
 
   // ── Manual warning section ──
   const kidOpts = kids.map(k=>`<option value="${k.id}">${k.emoji||'⭐'} ${escHtml(k.name)}</option>`).join('');
@@ -5569,80 +5608,109 @@ function renderWarningsTab() {
       <div style="font-weight:800;font-size:1rem;color:#e74c3c;margin-bottom:0.9rem">🚨 Issue Manual Warning</div>
       ${!kids.length ? '<div style="opacity:0.5;font-size:0.85rem">No children added yet.</div>' : `
       <div style="display:flex;flex-direction:column;gap:0.6rem">
-        <div>
-          <label class="form-label">Child</label>
-          <select class="form-input" id="warn-kid-sel" style="width:100%">${kidOpts}</select>
-        </div>
-        <div>
-          <label class="form-label">Reason for warning</label>
-          <input class="form-input" id="warn-reason" placeholder="e.g. Left room messy after being asked" style="width:100%">
-        </div>
-        <div>
-          <label class="form-label">Points deducted if confirmed as penalty</label>
-          <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:120px">
-        </div>
+        <div><label class="form-label">Child</label>
+          <select class="form-input" id="warn-kid-sel" style="width:100%">${kidOpts}</select></div>
+        <div><label class="form-label">Reason for warning</label>
+          <input class="form-input" id="warn-reason" placeholder="e.g. Left room messy after being asked" style="width:100%"></div>
+        <div><label class="form-label">Points deducted if confirmed as penalty</label>
+          <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:120px"></div>
         <button class="btn" style="background:rgba(231,76,60,0.25);border:1px solid rgba(231,76,60,0.5);color:#e74c3c;align-self:flex-start"
           onclick="issueManualWarning()">⚠️ Issue Warning</button>
       </div>`}
     </div>`;
 
-  // ── Auto-warning rules section ──
-  const ruleCards = rules.map((rule, idx) => {
-    const enabled = rule.enabled !== false;
-    const fmtFormula = (rule.formula||'').replace(/\{(\w+)\}/g, (_, k) =>
-      `<span style="color:#ffd700;font-weight:700">${rule[k]??k}</span>`);
+  // ── Add New Rule form (hidden until toggled) ──
+  const newRuleForm = `
+    <div id="add-rule-panel" style="display:none;margin-bottom:1rem">
+      <div class="p-card" style="border-left:3px solid #3498db">
+        <div style="font-weight:700;color:#3498db;margin-bottom:0.7rem">➕ New Automatic Warning Rule</div>
+        <div style="display:flex;flex-direction:column;gap:0.55rem">
+          <div><label class="form-label" style="font-size:0.7rem">Rule name</label>
+            <input class="form-input" id="nwr-name" placeholder="e.g. Screen time reminder" style="width:100%"></div>
+          <div><label class="form-label" style="font-size:0.7rem">Rule type</label>
+            <select class="form-input" id="nwr-type" style="width:100%" onchange="handleNwrType()">
+              <option value="brush">⏱ After task — if another task not done within time limit</option>
+              <option value="prayer">🕌 Prayer time — minutes before next prayer</option>
+            </select>
+          </div>
+          <div id="nwr-brush-fields">
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem">
+              <div style="flex:1;min-width:160px">
+                <label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
+                ${_wrTaskSelectHtml('nwr-trigger','','')}
+              </div>
+              <div style="flex:1;min-width:160px">
+                <label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
+                ${_wrTaskSelectHtml('nwr-condition','','')}
+              </div>
+            </div>
+            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <div><label class="form-label" style="font-size:0.7rem">Verbal reminder (min)</label>
+                <input class="form-input" type="number" min="1" id="nwr-remindMins" value="30" style="width:80px"></div>
+              <div><label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
+                <input class="form-input" type="number" min="1" id="nwr-warnMins" value="60" style="width:80px"></div>
+            </div>
+          </div>
+          <div id="nwr-prayer-fields" style="display:none">
+            <div><label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
+              <input class="form-input" type="number" min="1" id="nwr-minsBeforePrayer" value="40" style="width:80px"></div>
+          </div>
+          <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
+            <input class="form-input" type="number" min="1" id="nwr-pts" value="5" style="width:80px"></div>
+          <div><label class="form-label" style="font-size:0.7rem">Formula description (optional)</label>
+            <textarea class="form-input" id="nwr-formula" rows="2" placeholder="Describe what this rule does…"
+              style="width:100%;font-size:0.78rem;resize:vertical"></textarea></div>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn btn-approve btn-sm" onclick="addWarningRule()">✓ Add Rule</button>
+            <button class="btn btn-sm" onclick="document.getElementById('add-rule-panel').style.display='none'">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
 
-    const isBrush  = rule.type === 'brush';
-    const isPrayer = rule.type === 'prayer';
-
-    const taskOpts = (sel) => `<option value="">— auto-detect by name —</option>` +
-      (STATE.tasks||[]).map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${escHtml(t.name)}</option>`).join('');
+  // ── Existing rule cards ──
+  const ruleCards = rules.length ? rules.map((rule, idx) => {
+    const enabled   = rule.enabled !== false;
+    const isBrush   = rule.type === 'brush';
+    const isPrayer  = rule.type === 'prayer';
+    const fmtFormula = (rule.formula||'').replace(/\{(\w+)\}/g,
+      (_, k) => `<span style="color:#ffd700;font-weight:700">${rule[k]??k}</span>`);
 
     const paramFields = isBrush ? `
       <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem">
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
           <div style="flex:1;min-width:160px">
-            <label class="form-label" style="font-size:0.7rem">Trigger task (when THIS is done…)</label>
-            <select class="form-input" id="wr-triggerTaskId-${idx}" style="width:100%">${taskOpts(rule.triggerTaskId||'')}</select>
+            <label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
+            ${_wrTaskSelectHtml('wr-trigger-'+idx, rule.triggerTaskId||'', rule.triggerTaskName||'')}
           </div>
           <div style="flex:1;min-width:160px">
-            <label class="form-label" style="font-size:0.7rem">Condition task (…if THIS is not done)</label>
-            <select class="form-input" id="wr-conditionTaskId-${idx}" style="width:100%">${taskOpts(rule.conditionTaskId||'')}</select>
+            <label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
+            ${_wrTaskSelectHtml('wr-condition-'+idx, rule.conditionTaskId||'', rule.conditionTaskName||'')}
           </div>
         </div>
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
-          <div>
-            <label class="form-label" style="font-size:0.7rem">Verbal reminder after (min)</label>
-            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px">
-          </div>
-          <div>
-            <label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
-            <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px">
-          </div>
-          <div>
-            <label class="form-label" style="font-size:0.7rem">Points</label>
-            <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
-          </div>
+          <div><label class="form-label" style="font-size:0.7rem">Verbal reminder (min)</label>
+            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px"></div>
+          <div><label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
+            <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px"></div>
+          <div><label class="form-label" style="font-size:0.7rem">Points</label>
+            <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px"></div>
         </div>
-      </div>` : isPrayer ? `
+      </div>`
+    : isPrayer ? `
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
-        <div>
-          <label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
-          <input class="form-input" type="number" min="1" id="wr-minsBeforePrayer-${idx}" value="${rule.minsBeforePrayer||40}" style="width:80px">
-        </div>
-        <div>
-          <label class="form-label" style="font-size:0.7rem">Points</label>
-          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
-        </div>
+        <div><label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
+          <input class="form-input" type="number" min="1" id="wr-minsBeforePrayer-${idx}" value="${rule.minsBeforePrayer||40}" style="width:80px"></div>
+        <div><label class="form-label" style="font-size:0.7rem">Points</label>
+          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px"></div>
       </div>` : '';
 
     return `<div class="p-card" style="margin-bottom:0.9rem;border-left:3px solid ${enabled?'#FFA500':'rgba(255,255,255,0.15)'}">
       <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem">
         <span style="font-size:1.2rem">${enabled?'⚠️':'💤'}</span>
         <span style="font-weight:700;font-size:0.95rem;flex:1">${escHtml(rule.name)}</span>
-        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;cursor:pointer;flex-shrink:0">
-          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer">
-          Enabled
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer">
+          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer"> Enabled
         </label>
       </div>
       <div style="margin-bottom:0.5rem">
@@ -5655,16 +5723,73 @@ function renderWarningsTab() {
         <textarea class="form-input" id="wr-formula-${idx}" rows="2"
           style="width:100%;font-size:0.78rem;resize:vertical">${escHtml(rule.formula||'')}</textarea>
       </div>
-      <div style="font-size:0.73rem;opacity:0.5;margin-top:0.4rem;line-height:1.5">
-        Preview: ${fmtFormula}
+      ${rule.formula ? `<div style="font-size:0.71rem;opacity:0.45;margin-top:0.35rem;line-height:1.5">Preview: ${fmtFormula}</div>` : ''}
+      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+        <button class="btn btn-approve btn-sm" onclick="saveWarningRule(${idx})">💾 Save</button>
+        <button class="btn btn-sm" style="background:rgba(231,76,60,0.18);border:1px solid rgba(231,76,60,0.4);color:#e74c3c"
+          onclick="deleteWarningRule(${idx})">🗑 Delete</button>
       </div>
-      <button class="btn btn-approve btn-sm" style="margin-top:0.7rem" onclick="saveWarningRule(${idx})">💾 Save Rule</button>
     </div>`;
-  }).join('');
+  }).join('')
+  : '<div style="opacity:0.45;font-size:0.85rem;padding:0.5rem 0">No automatic rules yet. Add one above.</div>';
 
-  el.innerHTML = manualHtml +
-    `<div style="font-weight:800;font-size:1rem;color:#FFA500;margin:1.2rem 0 0.7rem">🤖 Automatic Warning Rules</div>` +
-    ruleCards;
+  el.innerHTML = manualHtml
+    + `<div style="display:flex;align-items:center;gap:0.7rem;margin:1.2rem 0 0.7rem">
+        <span style="font-weight:800;font-size:1rem;color:#FFA500">🤖 Automatic Warning Rules</span>
+        <button class="btn btn-sm" style="background:rgba(52,152,219,0.2);border:1px solid rgba(52,152,219,0.4);color:#3498db"
+          onclick="document.getElementById('add-rule-panel').style.display=''">➕ Add Rule</button>
+       </div>`
+    + newRuleForm
+    + ruleCards;
+}
+
+function handleNwrType() {
+  const type = document.getElementById('nwr-type')?.value;
+  const bf = document.getElementById('nwr-brush-fields');
+  const pf = document.getElementById('nwr-prayer-fields');
+  if(bf) bf.style.display = type === 'brush'  ? '' : 'none';
+  if(pf) pf.style.display = type === 'prayer' ? '' : 'none';
+}
+
+async function addWarningRule() {
+  const name = (document.getElementById('nwr-name')?.value||'').trim();
+  const type = document.getElementById('nwr-type')?.value || 'brush';
+  const pts  = parseInt(document.getElementById('nwr-pts')?.value||'5') || 5;
+  const formula = (document.getElementById('nwr-formula')?.value||'').trim();
+  if(!name) { toast('Enter a rule name'); return; }
+
+  const rule = {
+    id: 'custom-' + Date.now(),
+    name, type, enabled: true, pts, formula,
+  };
+  if(type === 'brush') {
+    const trig = _readWrTask('nwr-trigger');
+    const cond = _readWrTask('nwr-condition');
+    rule.triggerTaskId    = trig.taskId;
+    rule.triggerTaskName  = trig.taskName;
+    rule.conditionTaskId  = cond.taskId;
+    rule.conditionTaskName= cond.taskName;
+    rule.remindMins = parseInt(document.getElementById('nwr-remindMins')?.value||'30') || 30;
+    rule.warnMins   = parseInt(document.getElementById('nwr-warnMins')?.value||'60')   || 60;
+  }
+  if(type === 'prayer') {
+    rule.minsBeforePrayer = parseInt(document.getElementById('nwr-minsBeforePrayer')?.value||'40') || 40;
+  }
+
+  const rules = [...(STATE.warningRules||[]), rule];
+  await saveWarningRules(rules);
+  toast('✓ Rule added');
+  renderWarningsTab();
+}
+
+async function deleteWarningRule(idx) {
+  const rules = [...(STATE.warningRules||[])];
+  const name  = rules[idx]?.name || 'rule';
+  rules.splice(idx, 1);
+  await saveWarningRules(rules);
+  try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
+  toast(`🗑 "${name}" deleted`);
+  renderWarningsTab();
 }
 
 async function issueManualWarning() {
@@ -5673,8 +5798,7 @@ async function issueManualWarning() {
   const pts    = parseInt(document.getElementById('warn-pts')?.value||'0');
   if(!sel || !reason) { toast('Enter a reason for the warning'); return; }
   if(!pts || pts < 1) { toast('Enter points to deduct'); return; }
-  const kidId = sel.value;
-  await _addAutoPenaltyWarning(kidId, pts, reason);
+  await _addAutoPenaltyWarning(sel.value, pts, reason);
   document.getElementById('warn-reason').value = '';
   document.getElementById('warn-pts').value    = '';
   toast('⚠️ Warning issued — pending confirmation');
@@ -5682,26 +5806,25 @@ async function issueManualWarning() {
 }
 
 async function saveWarningRule(idx) {
-  const rules = JSON.parse(JSON.stringify(
-    (STATE.warningRules && STATE.warningRules.length) ? STATE.warningRules : DEFAULT_WARNING_RULES.map(r=>({...r}))
-  ));
-  const rule = rules[idx];
+  const rules = JSON.parse(JSON.stringify(STATE.warningRules||[]));
+  const rule  = rules[idx];
   if(!rule) return;
-  rule.enabled = document.getElementById(`wr-enabled-${idx}`)?.checked !== false;
-  rule.name    = document.getElementById(`wr-name-${idx}`)?.value?.trim()    || rule.name;
-  rule.formula = document.getElementById(`wr-formula-${idx}`)?.value?.trim() || rule.formula;
+  rule.enabled = !!document.getElementById(`wr-enabled-${idx}`)?.checked;
+  rule.name    = document.getElementById(`wr-name-${idx}`)?.value?.trim() || rule.name;
+  rule.formula = document.getElementById(`wr-formula-${idx}`)?.value?.trim() ?? rule.formula;
+  rule.pts     = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
   if(rule.type === 'brush') {
-    rule.remindMins      = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value)      || rule.remindMins;
-    rule.warnMins        = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)        || rule.warnMins;
-    rule.triggerTaskId   = document.getElementById(`wr-triggerTaskId-${idx}`)?.value   ?? rule.triggerTaskId;
-    rule.conditionTaskId = document.getElementById(`wr-conditionTaskId-${idx}`)?.value ?? rule.conditionTaskId;
+    rule.remindMins = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value) || rule.remindMins;
+    rule.warnMins   = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)   || rule.warnMins;
+    const trig = _readWrTask('wr-trigger-'+idx);
+    const cond = _readWrTask('wr-condition-'+idx);
+    rule.triggerTaskId    = trig.taskId;    rule.triggerTaskName  = trig.taskName;
+    rule.conditionTaskId  = cond.taskId;    rule.conditionTaskName= cond.taskName;
   }
   if(rule.type === 'prayer') {
     rule.minsBeforePrayer = parseInt(document.getElementById(`wr-minsBeforePrayer-${idx}`)?.value) || rule.minsBeforePrayer;
   }
-  rule.pts = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
   await saveWarningRules(rules);
-  // Clear persisted reminder flags so updated timings take effect today
   try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
   toast('✓ Rule saved');
   renderWarningsTab();
