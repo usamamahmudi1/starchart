@@ -3220,24 +3220,12 @@ function renderKidsTab() {
   if(!kids.length){ list.innerHTML='<div style="opacity:0.5;font-size:0.9rem">No children added yet.</div>'; return; }
   list.innerHTML = `<div style="display:flex;flex-direction:column;gap:0.75rem">` + kids.map(k=>{
     const col = COLORS[k.color]||COLORS.pink;
-    const bonuses = getBonusesForKid(k.id);
-    const totalBonus = bonuses.reduce((s,e)=>s+(e.kr||0),0);
-    const recentBonuses = bonuses.slice(-3).reverse();
     return `<div style="background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:14px;padding:0.8rem 1rem">
-      <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:0.6rem">
+      <div style="display:flex;align-items:center;gap:0.75rem">
         <span style="font-size:1.5rem">${k.emoji||'⭐'}</span>
         <span style="color:${col.main};font-weight:700;flex:1">${escHtml(k.name)}</span>
         <button class="btn btn-teal btn-sm" onclick="openKidEdit('${k.id}')">✏️ Edit</button>
         <button class="btn btn-danger btn-sm" onclick="deleteKid('${k.id}')">Delete</button>
-      </div>
-      <div style="background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.2);border-radius:10px;padding:0.6rem 0.8rem">
-        <div style="font-size:0.75rem;font-weight:700;color:#FFD700;margin-bottom:0.4rem;letter-spacing:0.04em">🎁 BONUS COINS${totalBonus>0?' · '+totalBonus.toFixed(2)+' kr total':''}</div>
-        <div style="display:flex;gap:0.4rem;flex-wrap:wrap;align-items:center">
-          <input id="bonus-amt-${k.id}" type="number" min="0.01" step="0.01" placeholder="kr amount" style="width:90px;padding:0.3rem 0.5rem;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;font-size:0.82rem">
-          <input id="bonus-desc-${k.id}" type="text" placeholder="reason (optional)" style="flex:1;min-width:100px;padding:0.3rem 0.5rem;border-radius:7px;border:1px solid rgba(255,255,255,0.15);background:rgba(255,255,255,0.08);color:#fff;font-size:0.82rem">
-          <button class="btn btn-sm" style="background:#FFD700;color:#1a1a2e;font-weight:700" onclick="addBonusKr('${k.id}')">+ Add</button>
-        </div>
-        ${recentBonuses.length?`<div style="margin-top:0.4rem;display:flex;flex-direction:column;gap:0.15rem">${recentBonuses.map(b=>`<div style="font-size:0.72rem;color:rgba(255,255,255,0.55)">+${(b.kr||0).toFixed(2)} kr${b.reason?' · '+escHtml(b.reason):''} <span style="opacity:0.4">${b.date||''}</span></div>`).join('')}</div>`:''}
       </div>
     </div>`;
   }).join('') + '</div>';
@@ -3822,6 +3810,16 @@ function renderMoneyTab() {
         <input class="bonus-input" type="number" min="0" step="0.01" id="spend-amt-${kid.id}" placeholder="kr" style="width:68px">
         <input class="bonus-input" id="spend-desc-${kid.id}" placeholder="what for?" style="width:110px;font-size:0.75rem">
         <button class="btn btn-sm" style="background:rgba(78,205,196,0.2);border:1px solid rgba(78,205,196,0.4);color:#4ECDC4;flex-shrink:0" onclick="recordSpending('${kid.id}')">💸 Record</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;padding:0.55rem 0.75rem;background:rgba(255,215,0,0.07);border:1px solid rgba(255,215,0,0.25);border-radius:10px">
+        <span style="font-size:1.3rem">🎁</span>
+        <div style="flex:1">
+          <div style="font-size:0.85rem;font-weight:700;color:#FFD700">Add Bonus Coins</div>
+          <div style="font-size:0.72rem;opacity:0.55">Add to wallet</div>
+        </div>
+        <input class="bonus-input" type="number" min="0.01" step="0.01" id="bonus-amt-${kid.id}" placeholder="kr" style="width:68px">
+        <input class="bonus-input" id="bonus-desc-${kid.id}" placeholder="reason (optional)" style="width:110px;font-size:0.75rem">
+        <button class="btn btn-sm" style="background:rgba(255,215,0,0.2);border:1px solid rgba(255,215,0,0.4);color:#FFD700;flex-shrink:0" onclick="addBonusKr('${kid.id}')">🎁 Add</button>
       </div>
       <div style="max-height:220px;overflow-y:auto">${txnRows}</div>
     </div>`;
