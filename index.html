@@ -63,6 +63,26 @@
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
+  /* ── Clock ── */
+  .clock-wrap {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 0.45rem; margin-top: 0.9rem; position: relative; z-index: 1;
+  }
+  .clock-canvas {
+    width: 110px; height: 110px;
+    filter: drop-shadow(0 0 14px rgba(255,255,255,0.15));
+    transition: filter 1s;
+  }
+  .clock-digital {
+    font-family: 'Fredoka One', cursive;
+    font-size: 1.6rem;
+    letter-spacing: 0.06em;
+    background: linear-gradient(90deg, var(--gold), var(--pink));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    transition: opacity 0.4s;
+  }
 
   .kids-grid {
     display: grid;
@@ -1476,6 +1496,11 @@
   <div class="kids-header">
     <div class="kids-title">✨ Star Chart ✨</div>
     <div class="kids-date" id="kids-date"></div>
+    <!-- CLOCK -->
+    <div class="clock-wrap" id="clock-wrap">
+      <canvas class="clock-canvas" id="clock-canvas" width="120" height="120"></canvas>
+      <div class="clock-digital" id="clock-digital"></div>
+    </div>
   </div>
   <div class="kids-grid" id="kids-grid"></div>
   <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
@@ -2059,7 +2084,7 @@ function showView(v) {
   if(cBtn) cBtn.style.display = showBtns ? 'flex' : 'none';
   // Only render if init has completed — listeners handle rendering during init
   if(!STATE._ready) return;
-  if(v==='kids')   renderKidsView();
+  if(v==='kids')   { renderKidsView(); startClock(); }
   if(v==='parent') renderParentView();
 }
 function showLogin() {
@@ -4242,6 +4267,160 @@ function _updateCardBalance(kidId) {
   }
 }
 
+// ============ KIDS CLOCK ============
+// 8 visual themes that rotate through the day (one per 3-hour block).
+// Each theme defines: face bg, rim color, tick color, hand colors, digital gradient, glow color.
+const CLOCK_THEMES = [
+  // 00:00–02:59 — deep midnight: dark navy, silver stars
+  { face:'#0a0820', rim:'#3a2d6e', tick:'rgba(180,160,255,0.7)', hrHand:'#c8b8ff', minHand:'#a090f0', secHand:'#ff6bcd', glow:'rgba(160,130,255,0.5)', digitalA:'#c8b8ff', digitalB:'#ff6bcd', label:'🌙 Midnight' },
+  // 03:00–05:59 — pre-dawn: dark teal, soft cyan
+  { face:'#061a1e', rim:'#0d5f6e', tick:'rgba(100,220,230,0.7)', hrHand:'#5ee8f5', minHand:'#30c8d8', secHand:'#ffb347', glow:'rgba(60,200,220,0.45)', digitalA:'#5ee8f5', digitalB:'#ffb347', label:'🌌 Pre-dawn' },
+  // 06:00–08:59 — sunrise: warm orange-pink
+  { face:'#1a0b08', rim:'#c04010', tick:'rgba(255,160,60,0.8)', hrHand:'#ffcc55', minHand:'#ff8c30', secHand:'#ff4c8c', glow:'rgba(255,140,50,0.5)', digitalA:'#ffcc55', digitalB:'#ff8c30', label:'🌅 Sunrise' },
+  // 09:00–11:59 — morning: sky blue, cheerful
+  { face:'#071828', rim:'#1a6faa', tick:'rgba(80,200,255,0.75)', hrHand:'#50c8ff', minHand:'#90deff', secHand:'#ff6b6b', glow:'rgba(60,180,255,0.45)', digitalA:'#50c8ff', digitalB:'#ffd700', label:'☀️ Morning' },
+  // 12:00–14:59 — noon: golden yellow, bright
+  { face:'#181005', rim:'#b08000', tick:'rgba(255,215,0,0.85)', hrHand:'#ffe040', minHand:'#ffd000', secHand:'#ff4500', glow:'rgba(255,210,0,0.5)', digitalA:'#ffe040', digitalB:'#ff9800', label:'🌞 Noon' },
+  // 15:00–17:59 — afternoon: green-teal, fresh
+  { face:'#051510', rim:'#197a50', tick:'rgba(80,230,160,0.75)', hrHand:'#50e6a0', minHand:'#30c880', secHand:'#ff6bcd', glow:'rgba(60,200,130,0.45)', digitalA:'#50e6a0', digitalB:'#a0ff80', label:'🌿 Afternoon' },
+  // 18:00–20:59 — sunset/dusk: magenta-purple
+  { face:'#140828', rim:'#7a1a6e', tick:'rgba(220,100,255,0.75)', hrHand:'#e070ff', minHand:'#c040e0', secHand:'#ffaa30', glow:'rgba(200,80,255,0.5)', digitalA:'#e070ff', digitalB:'#ffaa30', label:'🌇 Dusk' },
+  // 21:00–23:59 — night: deep indigo, soft white
+  { face:'#08082a', rim:'#252560', tick:'rgba(180,180,255,0.65)', hrHand:'#aaaaff', minHand:'#8888ee', secHand:'#ff6bcd', glow:'rgba(130,130,255,0.4)', digitalA:'#aaaaff', digitalB:'#ff6bcd', label:'🌃 Night' },
+];
+
+function _clockTheme() {
+  const h = new Date().getHours();
+  return CLOCK_THEMES[Math.floor(h / 3)];
+}
+
+function _drawAnalogClock(canvas, now, theme) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, R = W / 2;
+  ctx.clearRect(0, 0, W, W);
+
+  const h = now.getHours() % 12 + now.getMinutes() / 60;
+  const m = now.getMinutes() + now.getSeconds() / 60;
+  const s = now.getSeconds() + now.getMilliseconds() / 1000;
+
+  // Face
+  ctx.beginPath();
+  ctx.arc(R, R, R - 3, 0, Math.PI * 2);
+  ctx.fillStyle = theme.face;
+  ctx.fill();
+
+  // Outer rim
+  ctx.beginPath();
+  ctx.arc(R, R, R - 3, 0, Math.PI * 2);
+  ctx.strokeStyle = theme.rim;
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Hour tick marks
+  for(let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const isBig = i % 3 === 0;
+    const inner = R - (isBig ? 16 : 10);
+    ctx.beginPath();
+    ctx.moveTo(R + Math.cos(a) * inner, R + Math.sin(a) * inner);
+    ctx.lineTo(R + Math.cos(a) * (R - 6), R + Math.sin(a) * (R - 6));
+    ctx.strokeStyle = theme.tick;
+    ctx.lineWidth = isBig ? 2.5 : 1.5;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  // Hour numbers (compact, 12, 3, 6, 9)
+  ctx.font = `bold ${Math.round(R * 0.22)}px Nunito, sans-serif`;
+  ctx.fillStyle = theme.tick;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  [[12,0],['3',3],['6',6],['9',9]].forEach(([label, hr]) => {
+    const a = (hr / 12) * Math.PI * 2 - Math.PI / 2;
+    const nr = R * 0.65;
+    ctx.fillText(label, R + Math.cos(a) * nr, R + Math.sin(a) * nr);
+  });
+
+  // Hand helper
+  const drawHand = (angle, length, width, color, hasCap) => {
+    const a = angle - Math.PI / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(R - Math.cos(a) * length * 0.15, R - Math.sin(a) * length * 0.15);
+    ctx.lineTo(R + Math.cos(a) * length, R + Math.sin(a) * length);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.stroke();
+    ctx.restore();
+    if(hasCap) {
+      ctx.beginPath();
+      ctx.arc(R + Math.cos(a) * length, R + Math.sin(a) * length, width * 1.4, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+  };
+
+  // Hour hand
+  drawHand((h / 12) * Math.PI * 2, R * 0.5, 4.5, theme.hrHand, false);
+  // Minute hand
+  drawHand((m / 60) * Math.PI * 2, R * 0.72, 3, theme.minHand, false);
+  // Second hand (smooth sweep)
+  drawHand((s / 60) * Math.PI * 2, R * 0.82, 1.5, theme.secHand, true);
+
+  // Center dot
+  ctx.beginPath();
+  ctx.arc(R, R, 5, 0, Math.PI * 2);
+  ctx.fillStyle = theme.secHand;
+  ctx.shadowColor = theme.secHand;
+  ctx.shadowBlur = 8;
+  ctx.fill();
+}
+
+let _clockRAF = null;
+let _clockLastThemeSlot = -1;
+
+function _tickClock() {
+  const canvas = document.getElementById('clock-canvas');
+  const digital = document.getElementById('clock-digital');
+  if(!canvas || !digital) { _clockRAF = null; return; }
+
+  const now = new Date();
+  const theme = _clockTheme();
+
+  // Update analog
+  _drawAnalogClock(canvas, now, theme);
+
+  // Update digital
+  const hh = now.getHours().toString().padStart(2, '0');
+  const mm = now.getMinutes().toString().padStart(2, '0');
+  const ss = now.getSeconds().toString().padStart(2, '0');
+  const ampm = now.getHours() < 12 ? 'AM' : 'PM';
+  const hr12 = ((now.getHours() % 12) || 12).toString().padStart(2, '0');
+  digital.textContent = `${hr12}:${mm}:${ss} ${ampm}`;
+
+  // Restyle digital gradient when theme slot changes
+  const slot = Math.floor(now.getHours() / 3);
+  if(slot !== _clockLastThemeSlot) {
+    _clockLastThemeSlot = slot;
+    digital.style.background = `linear-gradient(90deg, ${theme.digitalA}, ${theme.digitalB})`;
+    digital.style.webkitBackgroundClip = 'text';
+    digital.style.backgroundClip = 'text';
+    digital.style.webkitTextFillColor = 'transparent';
+    canvas.style.filter = `drop-shadow(0 0 14px ${theme.glow})`;
+  }
+
+  _clockRAF = requestAnimationFrame(_tickClock);
+}
+
+function startClock() {
+  if(_clockRAF) cancelAnimationFrame(_clockRAF);
+  _clockLastThemeSlot = -1; // force re-style on first tick
+  _tickClock();
+}
+
 // ============ INIT ============
 makeStars();
 
@@ -4280,6 +4459,7 @@ async function init() {
   await autoFillLevels(); // auto-name any unnamed levels
   document.getElementById('loading-screen').style.display='none';
   showView('kids');
+  startClock();
   startListeners();
   // Update badge immediately after load so existing approvals show
   setTimeout(updatePendingBadge, 100);
