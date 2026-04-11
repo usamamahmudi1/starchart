@@ -2754,18 +2754,6 @@ function renderMarkTab() {
       ${counters}
       ${deedListHtml}
       <div class="bonus-penalty-wrap">
-        <div class="bonus-box" style="background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.25)">
-          <div class="bonus-box-icon">💸</div>
-          <div class="bonus-box-body">
-            <div class="bonus-box-title" style="color:#4ECDC4">Record Spending</div>
-            <div class="bonus-box-sub">Deduct from this week's wallet</div>
-          </div>
-          <div class="bonus-controls" style="flex-direction:column;align-items:flex-end;gap:4px">
-            <input class="bonus-input" type="number" min="0" step="0.01" id="spend-amt-${kid.id}" placeholder="kr">
-            <input class="bonus-input" id="spend-desc-${kid.id}" placeholder="what for?" style="width:110px;font-size:0.75rem">
-            <button class="btn btn-sm" style="background:rgba(78,205,196,0.2);border:1px solid rgba(78,205,196,0.4);color:#4ECDC4" onclick="recordSpending('${kid.id}')">💸 Record</button>
-          </div>
-        </div>
         <div class="bonus-box positive" style="flex-direction:column;align-items:stretch;gap:0.5rem">
           <div style="display:flex;align-items:center;gap:0.5rem">
             <div class="bonus-box-icon">🌟</div>
@@ -3763,6 +3751,16 @@ function renderMoneyTab() {
           <div style="font-size:1rem;font-weight:700;color:#3498db">${balance.toFixed(2)}</div>
           <div style="font-size:0.65rem;opacity:0.6;text-transform:uppercase">Balance</div>
         </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.6rem;padding:0.55rem 0.75rem;background:rgba(78,205,196,0.08);border:1px solid rgba(78,205,196,0.25);border-radius:10px">
+        <span style="font-size:1.3rem">💸</span>
+        <div style="flex:1">
+          <div style="font-size:0.85rem;font-weight:700;color:#4ECDC4">Record Spending</div>
+          <div style="font-size:0.72rem;opacity:0.55">Deduct from wallet</div>
+        </div>
+        <input class="bonus-input" type="number" min="0" step="0.01" id="spend-amt-${kid.id}" placeholder="kr" style="width:68px">
+        <input class="bonus-input" id="spend-desc-${kid.id}" placeholder="what for?" style="width:110px;font-size:0.75rem">
+        <button class="btn btn-sm" style="background:rgba(78,205,196,0.2);border:1px solid rgba(78,205,196,0.4);color:#4ECDC4;flex-shrink:0" onclick="recordSpending('${kid.id}')">💸 Record</button>
       </div>
       <div style="max-height:220px;overflow-y:auto">${txnRows}</div>
     </div>`;
