@@ -2084,10 +2084,10 @@ async function saveChat(messages) {
   STATE.chat = cleaned;
   await fbSet('chat', { messages: cleaned });
 }
-async function addTaskLogEntry(kidId, taskName, by) {
+async function addTaskLogEntry(kidId, taskName, by, status) {
   const kid = STATE.kids.find(k=>k.id===kidId);
   const entries = (STATE.taskLog || []).slice();
-  entries.push({ kidId, kidName: kid ? kid.name : kidId, taskName, ts: Date.now(), by });
+  entries.push({ kidId, kidName: kid ? kid.name : kidId, taskName, ts: Date.now(), by, status: status || 'done' });
   await saveTaskLog(entries);
 }
 
@@ -3616,9 +3616,18 @@ async function approveTask(kidId, taskId, count, src) {
 
 async function rejectTask(kidId, taskId) {
   const realKey = decodeURIComponent(taskId);
+  // Resolve display name — handle deed keys (deed:kidId:description) and regular task IDs
+  let taskName;
+  if(realKey.startsWith('deed:')) {
+    taskName = realKey.split(':').slice(2).join(':');
+  } else {
+    const t = STATE.tasks.find(t => t.id === realKey);
+    taskName = t ? t.name : realKey;
+  }
   const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
   if(pending[kidId]) { delete pending[kidId][realKey]; if(!Object.keys(pending[kidId]).length) delete pending[kidId]; }
   await savePending(pending);
+  await addTaskLogEntry(kidId, taskName, 'parent', 'rejected');
   toast('Request rejected.');
 }
 
@@ -3772,42 +3781,120 @@ window.renderMoneyTab = renderMoneyTab;
 function renderLogTab() {
   const el = document.getElementById('log-content');
   if(!el) return;
-  const entries = (STATE.taskLog || []).slice().sort((a,b)=>b.ts-a.ts);
-  if(!entries.length) {
-    el.innerHTML = '<div class="p-card" style="opacity:0.5;font-size:0.9rem">No log entries yet. Tasks marked as done will appear here.</div>';
+  const { kids, tasks, done, pending } = STATE;
+  const todayStr = todayKey();
+
+  if(!kids.length) {
+    el.innerHTML = '<div class="p-card" style="opacity:0.5;font-size:0.9rem">No children yet.</div>';
     return;
   }
-  // Group by date
-  const byDay = {};
-  entries.forEach(e => {
-    const day = new Date(e.ts).toISOString().slice(0,10);
-    if(!byDay[day]) byDay[day] = [];
-    byDay[day].push(e);
+
+  // ── Build unified event list per kid ──
+  const kidEvents = {};
+  kids.forEach(k => { kidEvents[k.id] = []; });
+
+  // 1. taskLog: done + rejected tasks
+  (STATE.taskLog || []).forEach(e => {
+    if(!kidEvents[e.kidId]) return;
+    kidEvents[e.kidId].push({ ts: e.ts, name: e.taskName || '?', type: 'task', status: e.status || 'done', by: e.by || 'kid' });
   });
-  const days = Object.keys(byDay).sort((a,b)=>b.localeCompare(a));
-  const todayStr = todayKey();
-  el.innerHTML = days.map(day => {
-    const label = day===todayStr ? 'Today' : new Date(day+'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'});
-    const rows = byDay[day].map(e => {
-      const kid = STATE.kids.find(k=>k.id===e.kidId);
-      const col = kid ? (COLORS[kid.color]||COLORS.pink) : COLORS.pink;
-      const timeStr = new Date(e.ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
-      const isParent = e.by === 'parent';
-      return `<div style="display:flex;align-items:center;gap:0.75rem;padding:0.5rem 0.6rem;border-radius:10px;background:${isParent?'rgba(255,255,255,0.03)':'rgba(255,255,255,0.07)'};margin-bottom:0.35rem;${isParent?'opacity:0.55':''}">
-        <div style="font-size:1.1rem;line-height:1">${kid ? kid.emoji : '⭐'}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:0.85rem;font-weight:600;color:${isParent?'rgba(255,255,255,0.45)':col.main}">${escHtml(e.kidName||'?')}</div>
-          <div style="font-size:0.78rem;opacity:${isParent?'0.4':'0.7'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(e.taskName||'?')}</div>
-        </div>
-        <div style="font-size:0.72rem;opacity:0.45;flex-shrink:0;text-align:right">
-          <div>${timeStr}</div>
-          ${isParent ? '<div style="font-size:0.65rem;color:rgba(255,255,255,0.3);margin-top:2px">by parent</div>' : ''}
-        </div>
+
+  // 2. Currently pending suggestions (still awaiting parent action)
+  kids.forEach(kid => {
+    const kp = pending[kid.id] || {};
+    const tsMap = kp._ts || {};
+    Object.entries(kp).forEach(([taskId, count]) => {
+      if(taskId === '_ts' || typeof count !== 'number') return;
+      let name;
+      if(taskId.startsWith('deed:')) name = taskId.split(':').slice(2).join(':');
+      else { const t = tasks.find(t => t.id === taskId); name = t ? t.name : taskId; }
+      kidEvents[kid.id].push({
+        ts: tsMap[taskId] || Date.now(),
+        name, type: 'suggestion', status: 'pending', by: 'kid',
+        count: count > 1 ? count : null,
+      });
+    });
+  });
+
+  // 3. Bonus points (xbonuses) and confirmed deductions (xpenalties) from done[day]
+  Object.keys(done).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).forEach(day => {
+    const dd = done[day] || {};
+    const dayTs = new Date(day + 'T12:00:00').getTime();
+    kids.forEach(kid => {
+      if(!kidEvents[kid.id]) return;
+      ((dd.xbonuses  || {})[kid.id] || []).forEach(b =>
+        kidEvents[kid.id].push({ ts: dayTs, name: b.reason || 'Bonus points',    type: 'bonus',   status: 'bonus',   pts: b.pts, by: 'parent' }));
+      ((dd.xpenalties || {})[kid.id] || []).forEach(p =>
+        kidEvents[kid.id].push({ ts: dayTs, name: p.reason || 'Point deduction', type: 'penalty', status: 'penalty', pts: p.pts, by: 'parent' }));
+      ((dd.pendingPenalties || {})[kid.id] || []).forEach(p =>
+        kidEvents[kid.id].push({ ts: dayTs, name: p.reason || 'Warning',         type: 'warning', status: 'warning', pts: p.pts, by: 'auto'   }));
+    });
+  });
+
+  // Sort newest first per kid
+  kids.forEach(k => kidEvents[k.id].sort((a, b) => b.ts - a.ts));
+
+  const hasAny = kids.some(k => kidEvents[k.id].length > 0);
+  if(!hasAny) {
+    el.innerHTML = '<div class="p-card" style="opacity:0.5;font-size:0.9rem">No log entries yet.</div>';
+    return;
+  }
+
+  // ── Status pill ──
+  const pill = e => {
+    if(e.type === 'bonus')   return { label: `+${e.pts} pts Bonus`,    bg: 'rgba(46,204,113,0.22)', color: '#2ecc71' };
+    if(e.type === 'penalty') return { label: `−${e.pts} pts Deducted`, bg: 'rgba(231,76,60,0.22)',  color: '#e74c3c' };
+    if(e.type === 'warning') return { label: `⚠️ Warning (${e.pts}pts)`, bg: 'rgba(255,140,0,0.22)', color: '#FFA500' };
+    if(e.status === 'pending')  return { label: '⏳ Suggested', bg: 'rgba(52,152,219,0.22)',  color: '#3498db' };
+    if(e.status === 'rejected') return { label: '❌ Rejected',  bg: 'rgba(231,76,60,0.18)',   color: '#e74c3c' };
+    if(e.by === 'parent')       return { label: '✓ By Parent', bg: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.45)' };
+    return { label: '✅ Done', bg: 'rgba(46,204,113,0.18)', color: '#2ecc71' };
+  };
+
+  const fmtDay  = d => d === todayStr ? 'Today' : new Date(d + 'T12:00:00').toLocaleDateString('en-US', {weekday:'long', month:'short', day:'numeric'});
+  const fmtTime = ts => new Date(ts).toLocaleTimeString('en-US', {hour:'2-digit', minute:'2-digit'});
+
+  el.innerHTML = kids.map(kid => {
+    const events = kidEvents[kid.id];
+    if(!events.length) return '';
+    const col = COLORS[kid.color] || COLORS.pink;
+
+    // Group this kid's events by calendar day
+    const byDay = {};
+    events.forEach(e => {
+      const day = new Date(e.ts).toISOString().slice(0, 10);
+      if(!byDay[day]) byDay[day] = [];
+      byDay[day].push(e);
+    });
+    const days = Object.keys(byDay).sort((a, b) => b.localeCompare(a));
+
+    const dayBlocks = days.map(day => {
+      const rows = byDay[day].map(e => {
+        const p = pill(e);
+        return `<div style="display:flex;align-items:flex-start;gap:0.55rem;padding:0.4rem 0.5rem;border-radius:8px;background:rgba(255,255,255,0.04);margin-bottom:0.28rem">
+          <div style="flex:1;min-width:0;padding-top:1px">
+            <div style="font-size:0.82rem;font-weight:600;opacity:0.88;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.name)}</div>
+            ${e.count && e.count > 1 ? `<div style="font-size:0.66rem;opacity:0.38">suggested ×${e.count}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0">
+            <span style="font-size:0.67rem;font-weight:700;padding:2px 8px;border-radius:999px;background:${p.bg};color:${p.color};white-space:nowrap">${p.label}</span>
+            <span style="font-size:0.63rem;opacity:0.32">${fmtTime(e.ts)}</span>
+          </div>
+        </div>`;
+      }).join('');
+      return `<div style="margin-bottom:0.7rem">
+        <div style="font-size:0.68rem;opacity:0.38;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;margin-bottom:0.35rem">${fmtDay(day)}</div>
+        ${rows}
       </div>`;
     }).join('');
-    return `<div class="p-card" style="margin-bottom:1rem">
-      <div style="font-size:0.75rem;opacity:0.45;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.6rem">${label} <span style="font-weight:400;opacity:0.6">(${byDay[day].length})</span></div>
-      ${rows}
+
+    return `<div class="p-card" style="margin-bottom:1rem;border-left:3px solid ${col.main}">
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.7rem">
+        <span style="font-size:1.3rem">${kid.emoji||'⭐'}</span>
+        <span style="font-weight:800;font-size:1rem;color:${col.main}">${escHtml(kid.name)}</span>
+        <span style="font-size:0.7rem;opacity:0.35;margin-left:auto">${events.length} entries</span>
+      </div>
+      ${dayBlocks}
     </div>`;
   }).join('');
 }
