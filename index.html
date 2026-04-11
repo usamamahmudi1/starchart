@@ -2184,6 +2184,24 @@ function makeStars() {
 // Track which kid+condition has already been handled this session
 const _reminderFlags = new Set();
 
+// Persist fired-reminder keys to localStorage so page-reload within the same window
+// doesn't re-announce or re-add warnings that already fired today.
+function _loadFiredFlagsFromStorage() {
+  try {
+    const arr = JSON.parse(localStorage.getItem('sc_fired_' + todayKey()) || '[]');
+    arr.forEach(k => _reminderFlags.add(k));
+  } catch(e) {}
+}
+function _persistFlag(key) {
+  _reminderFlags.add(key);
+  try {
+    const fk = 'sc_fired_' + todayKey();
+    const arr = new Set(JSON.parse(localStorage.getItem(fk) || '[]'));
+    arr.add(key);
+    localStorage.setItem(fk, JSON.stringify([...arr]));
+  } catch(e) {}
+}
+
 // Match tasks by name pattern
 function _findTaskByRole(role) {
   const tasks = STATE.tasks;
@@ -2225,15 +2243,20 @@ function _speakReminder(text) {
   } catch(e) {}
 }
 
-// Auto-add a pending penalty warning on behalf of parent (no duplicate if same reason exists today)
+// Auto-add a pending penalty warning on behalf of parent (no duplicate if same reason exists today,
+// and no re-add if parent has already dismissed this exact reason today).
 async function _addAutoPenaltyWarning(kidId, pts, reason) {
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]) done[tk]={};
   if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
   if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
+  // Already pending with same reason?
   const already = done[tk].pendingPenalties[kidId].some(p=>p.reason===reason);
   if(already) return;
+  // Parent already dismissed this exact auto-warning today → never re-add
+  const suppressed = ((done[tk].suppressedAutoWarnings||{})[kidId]||[]).includes(reason);
+  if(suppressed) return;
   done[tk].pendingPenalties[kidId].push({
     pts, reason,
     id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
@@ -2286,7 +2309,7 @@ function checkTimeBasedReminders() {
     const first = kid.name.split(' ')[0];
     const kidDone = (todayDone[kid.id])||{};
 
-    // ── Condition 1: Breakfast → Brush Teeth ──
+    // ── Condition 1: Breakfast → Brush Teeth (morning) ──
     if(bfTask && btTask) {
       const bfDone = (kidDone[bfTask.id]||0) > 0;
       const btDone = (kidDone[btTask.id]||0) > 0;
@@ -2294,13 +2317,16 @@ function checkTimeBasedReminders() {
         const bfTs = _getTaskDoneTime(kid.id, bfTask.name);
         if(bfTs) {
           const minsSince = (now - bfTs) / 60000;
-          if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-brush-remind')) {
-            _reminderFlags.add(kid.id+'-brush-remind');
+          const remindKey = kid.id+'-brush-remind';
+          const warnKey   = kid.id+'-brush-warn';
+          const warnReason = 'Did not brush teeth within 1 hour after breakfast';
+          if(minsSince >= 30 && !_reminderFlags.has(remindKey)) {
+            _persistFlag(remindKey);
             _speakReminder(`${first}! You had breakfast more than 30 minutes ago. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-brush-warn')) {
-            _reminderFlags.add(kid.id+'-brush-warn');
-            _addAutoPenaltyWarning(kid.id, 5, 'Did not brush teeth within 1 hour after breakfast');
+          if(minsSince >= 60 && !_reminderFlags.has(warnKey)) {
+            _persistFlag(warnKey);
+            _addAutoPenaltyWarning(kid.id, 5, warnReason);
             setTimeout(()=>_speakReminder(`${first}! A 5 point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
           }
         }
@@ -2315,31 +2341,44 @@ function checkTimeBasedReminders() {
         const dinTs = _getTaskDoneTime(kid.id, dinTask.name);
         if(dinTs) {
           const minsSince = (now - dinTs) / 60000;
-          if(minsSince >= 30 && !_reminderFlags.has(kid.id+'-btd-remind')) {
-            _reminderFlags.add(kid.id+'-btd-remind');
+          const remindKey = kid.id+'-btd-remind';
+          const warnKey   = kid.id+'-btd-warn';
+          const warnReason = 'Did not brush teeth within 1 hour after dinner';
+          if(minsSince >= 30 && !_reminderFlags.has(remindKey)) {
+            _persistFlag(remindKey);
             _speakReminder(`${first}! It's been more than 30 minutes since dinner. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= 60 && !_reminderFlags.has(kid.id+'-btd-warn')) {
-            _reminderFlags.add(kid.id+'-btd-warn');
-            _addAutoPenaltyWarning(kid.id, 7, 'Did not brush teeth within 1 hour after dinner');
+          if(minsSince >= 60 && !_reminderFlags.has(warnKey)) {
+            _persistFlag(warnKey);
+            _addAutoPenaltyWarning(kid.id, 7, warnReason);
             setTimeout(()=>_speakReminder(`${first}! A 7 point warning has been added because you didn't brush your teeth after dinner. A parent will confirm it.`), 1500);
           }
         }
       }
     }
 
-    // ── Condition 3: 40 mins before Asr, Maghrib, Isha → warning ──
+    // ── Condition 3: 40 mins before Asr/Maghrib/Isha → warn about the PREVIOUS prayer ──
+    // e.g. 40 min before Maghrib = Asr time is almost gone → warn that Asr wasn't done
     if(_prayerCache && _prayerCache.date === todayKey()) {
       const t = _prayerCache.timings;
-      [['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
+      // [upcomingKey, upcomingLabel, previousLabel]
+      [
+        ['Asr',     'Asr',     'Dhuhr'],
+        ['Maghrib', 'Maghrib', 'Asr'],
+        ['Isha',    'Isha',    'Maghrib'],
+      ].forEach(([key, upLabel, prevLabel]) => {
         const pm = toMins(t[key]);
         if(pm < 0) return;
         const minsUntil = pm - totalMinsNow;
-        // Window: between 42 and 38 mins before (catches any 60-s interval tick near T-40)
-        if(minsUntil >= 38 && minsUntil <= 42 && !_reminderFlags.has(kid.id+'-pre40-'+key)) {
-          _reminderFlags.add(kid.id+'-pre40-'+key);
-          _addAutoPenaltyWarning(kid.id, 5, `Did not prepare for ${label} prayer — warning added 40 minutes before`);
-          setTimeout(()=>_speakReminder(`${first}! ${label} prayer is in about 40 minutes. Please get ready for prayer. A 5 point warning has been added.`), 800);
+        const flagKey   = kid.id+'-pre40-'+key;
+        const warnReason = `Did not pray ${prevLabel} — only 40 minutes left before ${upLabel}`;
+        // Fire within the 38–42 min window; _persistFlag prevents re-fire after reload
+        if(minsUntil >= 38 && minsUntil <= 42 && !_reminderFlags.has(flagKey)) {
+          _persistFlag(flagKey);
+          _addAutoPenaltyWarning(kid.id, 5, warnReason);
+          setTimeout(()=>_speakReminder(
+            `${first}! You have not prayed ${prevLabel} yet. Only about 40 minutes remain before ${upLabel} prayer. A 5 point warning has been added.`
+          ), 800);
         }
       });
     }
@@ -2354,9 +2393,10 @@ function checkTimeBasedReminders() {
     [['Fajr','Fajr'],['Dhuhr','Dhuhr'],['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
       const pm = toMins(t[key]);
       if(pm < 0) return;
-      // Announce within a 2-minute window of prayer start
-      if(totalMinsNow >= pm && totalMinsNow <= pm+1 && !_reminderFlags.has('global-adhan-'+key)) {
-        _reminderFlags.add('global-adhan-'+key);
+      const flagKey = 'global-adhan-'+key;
+      // Announce within a 2-minute window of prayer start; persist so reload won't re-fire
+      if(totalMinsNow >= pm && totalMinsNow <= pm+1 && !_reminderFlags.has(flagKey)) {
+        _persistFlag(flagKey);
         _speakReminder(`It is time for ${label} Prayer. Allahu Akbar.`);
       }
     });
@@ -2956,7 +2996,16 @@ async function dismissPenalty(kidId, idx) {
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]?.pendingPenalties?.[kidId]) return;
-  done[tk].pendingPenalties[kidId].splice(idx,1);
+  const penalty = done[tk].pendingPenalties[kidId][idx];
+  // If this was auto-generated, record suppression so the system never re-adds it today
+  if(penalty && penalty.auto && penalty.reason) {
+    if(!done[tk].suppressedAutoWarnings) done[tk].suppressedAutoWarnings = {};
+    if(!done[tk].suppressedAutoWarnings[kidId]) done[tk].suppressedAutoWarnings[kidId] = [];
+    if(!done[tk].suppressedAutoWarnings[kidId].includes(penalty.reason)) {
+      done[tk].suppressedAutoWarnings[kidId].push(penalty.reason);
+    }
+  }
+  done[tk].pendingPenalties[kidId].splice(idx, 1);
   await saveDone(done);
   toast('Warning cancelled — no points deducted');
   renderApprovalsTab(); updatePendingBadge();
@@ -4499,6 +4548,7 @@ async function init() {
 
   STATE._ready = true;
   await autoFillLevels(); // auto-name any unnamed levels
+  _loadFiredFlagsFromStorage(); // seed reminder flags from today's localStorage so reload doesn't re-fire
   document.getElementById('loading-screen').style.display='none';
   showView('kids');
   startClock();
