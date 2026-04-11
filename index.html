@@ -40,13 +40,18 @@
 
   /* ===================== KIDS VIEW ===================== */
   .kids-header {
-    text-align: center;
-    padding: 2.5rem 1rem 1rem;
+    padding: 1.6rem 1rem 0.8rem;
     position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.5rem;
+    max-width: 900px; margin: 0 auto;
+  }
+  .kids-header-center {
+    flex: 1; text-align: center; min-width: 0;
   }
   .kids-title {
     font-family: 'Fredoka One', cursive;
-    font-size: clamp(2rem, 6vw, 4rem);
+    font-size: clamp(1.6rem, 5vw, 3.2rem);
     background: linear-gradient(90deg, var(--gold), var(--pink), var(--gold));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
@@ -54,34 +59,44 @@
     text-shadow: none;
     animation: shimmer 3s linear infinite;
     background-size: 200%;
+    white-space: nowrap;
   }
   @keyframes shimmer { 0%{background-position:0%} 100%{background-position:200%} }
   .kids-date {
-    font-size: 1rem;
-    opacity: 0.6;
-    margin-top: 0.25rem;
-    letter-spacing: 0.1em;
+    font-size: 0.72rem;
+    opacity: 0.5;
+    margin-top: 0.15rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  /* ── Clock ── */
-  .clock-wrap {
-    display: flex; flex-direction: column; align-items: center;
-    gap: 0.45rem; margin-top: 0.9rem; position: relative; z-index: 1;
+  /* ── Analog clock ── */
+  .clock-analog-wrap {
+    flex-shrink: 0; display: flex; align-items: center; justify-content: center;
   }
   .clock-canvas {
-    width: 110px; height: 110px;
-    filter: drop-shadow(0 0 14px rgba(255,255,255,0.15));
+    width: 130px; height: 130px;
     transition: filter 1s;
   }
-  .clock-digital {
+  /* ── Digital clock ── */
+  .clock-digital-wrap {
+    flex-shrink: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 0.2rem;
+    min-width: 90px;
+  }
+  .clock-digital-12 {
     font-family: 'Fredoka One', cursive;
-    font-size: 1.6rem;
+    font-size: clamp(1.1rem, 3vw, 1.55rem);
+    letter-spacing: 0.04em;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .clock-digital-24 {
+    font-family: 'Nunito', sans-serif;
+    font-weight: 700;
+    font-size: clamp(0.78rem, 2vw, 1rem);
     letter-spacing: 0.06em;
-    background: linear-gradient(90deg, var(--gold), var(--pink));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    transition: opacity 0.4s;
+    opacity: 0.6;
+    white-space: nowrap;
   }
 
   .kids-grid {
@@ -1494,12 +1509,19 @@
 <!-- KIDS VIEW -->
 <div id="view-kids">
   <div class="kids-header">
-    <div class="kids-title">✨ Star Chart ✨</div>
-    <div class="kids-date" id="kids-date"></div>
-    <!-- CLOCK -->
-    <div class="clock-wrap" id="clock-wrap">
-      <canvas class="clock-canvas" id="clock-canvas" width="120" height="120"></canvas>
-      <div class="clock-digital" id="clock-digital"></div>
+    <!-- Analog clock — LEFT -->
+    <div class="clock-analog-wrap">
+      <canvas class="clock-canvas" id="clock-canvas" width="160" height="160"></canvas>
+    </div>
+    <!-- Title + date — CENTER -->
+    <div class="kids-header-center">
+      <div class="kids-title">✨ Star Chart ✨</div>
+      <div class="kids-date" id="kids-date"></div>
+    </div>
+    <!-- Digital clock — RIGHT -->
+    <div class="clock-digital-wrap">
+      <div class="clock-digital-12" id="clock-digital-12"></div>
+      <div class="clock-digital-24" id="clock-digital-24"></div>
     </div>
   </div>
   <div class="kids-grid" id="kids-grid"></div>
@@ -4299,83 +4321,98 @@ function _drawAnalogClock(canvas, now, theme) {
   const W = canvas.width, R = W / 2;
   ctx.clearRect(0, 0, W, W);
 
-  const h = now.getHours() % 12 + now.getMinutes() / 60;
+  const h = now.getHours() % 12 + now.getMinutes() / 60 + now.getSeconds() / 3600;
   const m = now.getMinutes() + now.getSeconds() / 60;
   const s = now.getSeconds() + now.getMilliseconds() / 1000;
 
-  // Face
+  // Numbers sit at this radius; ticks go from rim inward; hands must not overlap numbers
+  const numR   = R * 0.72;   // number centre radius
+  const rimIn  = R - 4;      // inner edge of outer rim
+
+  // Face (filled circle)
   ctx.beginPath();
-  ctx.arc(R, R, R - 3, 0, Math.PI * 2);
+  ctx.arc(R, R, R - 2, 0, Math.PI * 2);
   ctx.fillStyle = theme.face;
   ctx.fill();
 
-  // Outer rim
+  // Outer rim ring
   ctx.beginPath();
-  ctx.arc(R, R, R - 3, 0, Math.PI * 2);
+  ctx.arc(R, R, R - 2, 0, Math.PI * 2);
   ctx.strokeStyle = theme.rim;
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Hour tick marks
-  for(let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
-    const isBig = i % 3 === 0;
-    const inner = R - (isBig ? 16 : 10);
+  // ── 60 minute tick marks ──
+  for(let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2 - Math.PI / 2;
+    const isHour  = i % 5 === 0;
+    const isQuarter = i % 15 === 0;
+    const tickLen = isQuarter ? R * 0.16 : isHour ? R * 0.12 : R * 0.06;
+    const outer = rimIn;
+    const inner = rimIn - tickLen;
     ctx.beginPath();
     ctx.moveTo(R + Math.cos(a) * inner, R + Math.sin(a) * inner);
-    ctx.lineTo(R + Math.cos(a) * (R - 6), R + Math.sin(a) * (R - 6));
-    ctx.strokeStyle = theme.tick;
-    ctx.lineWidth = isBig ? 2.5 : 1.5;
+    ctx.lineTo(R + Math.cos(a) * outer, R + Math.sin(a) * outer);
+    ctx.strokeStyle = isHour ? theme.tick : theme.tick.replace(/[\d.]+\)$/, '0.4)');
+    ctx.lineWidth = isQuarter ? 2.5 : isHour ? 1.8 : 1;
     ctx.lineCap = 'round';
     ctx.stroke();
   }
 
-  // Hour numbers (compact, 12, 3, 6, 9)
-  ctx.font = `bold ${Math.round(R * 0.22)}px Nunito, sans-serif`;
-  ctx.fillStyle = theme.tick;
+  // ── All 12 hour numbers ──
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  [[12,0],['3',3],['6',6],['9',9]].forEach(([label, hr]) => {
-    const a = (hr / 12) * Math.PI * 2 - Math.PI / 2;
-    const nr = R * 0.65;
-    ctx.fillText(label, R + Math.cos(a) * nr, R + Math.sin(a) * nr);
-  });
+  for(let i = 1; i <= 12; i++) {
+    const a = (i / 12) * Math.PI * 2 - Math.PI / 2;
+    const isQuarter = i % 3 === 0;
+    ctx.font = `${isQuarter ? '800' : '700'} ${Math.round(R * (isQuarter ? 0.2 : 0.17))}px Nunito, sans-serif`;
+    ctx.fillStyle = theme.tick;
+    ctx.globalAlpha = isQuarter ? 1 : 0.75;
+    ctx.fillText(i, R + Math.cos(a) * numR, R + Math.sin(a) * numR);
+  }
+  ctx.globalAlpha = 1;
 
-  // Hand helper
-  const drawHand = (angle, length, width, color, hasCap) => {
-    const a = angle - Math.PI / 2;
+  // ── Hand helper ──
+  const drawHand = (angleFraction, full, length, tailFrac, width, color, glowBlur) => {
+    const a = angleFraction * Math.PI * 2 - Math.PI / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.moveTo(R - Math.cos(a) * length * 0.15, R - Math.sin(a) * length * 0.15);
+    ctx.moveTo(R - Math.cos(a) * length * tailFrac, R - Math.sin(a) * length * tailFrac);
     ctx.lineTo(R + Math.cos(a) * length, R + Math.sin(a) * length);
     ctx.strokeStyle = color;
     ctx.lineWidth = width;
     ctx.lineCap = 'round';
     ctx.shadowColor = color;
-    ctx.shadowBlur = 6;
+    ctx.shadowBlur = glowBlur;
     ctx.stroke();
     ctx.restore();
-    if(hasCap) {
-      ctx.beginPath();
-      ctx.arc(R + Math.cos(a) * length, R + Math.sin(a) * length, width * 1.4, 0, Math.PI * 2);
-      ctx.fillStyle = color;
-      ctx.fill();
-    }
   };
 
-  // Hour hand
-  drawHand((h / 12) * Math.PI * 2, R * 0.5, 4.5, theme.hrHand, false);
-  // Minute hand
-  drawHand((m / 60) * Math.PI * 2, R * 0.72, 3, theme.minHand, false);
-  // Second hand (smooth sweep)
-  drawHand((s / 60) * Math.PI * 2, R * 0.82, 1.5, theme.secHand, true);
+  // Hour hand — fat, short, stops before the numbers
+  drawHand(h / 12, true, R * 0.48, 0.12, 5,   theme.hrHand,  8);
+  // Minute hand — medium, extends to edge of number ring
+  drawHand(m / 60, true, R * 0.65, 0.12, 3.2, theme.minHand, 6);
+  // Second hand — thin, long, small tail counterbalance
+  drawHand(s / 60, true, R * 0.78, 0.22, 1.6, theme.secHand, 10);
 
-  // Center dot
+  // Second-hand counterbalance dot at tail
+  const sa = (s / 60) * Math.PI * 2 - Math.PI / 2;
   ctx.beginPath();
-  ctx.arc(R, R, 5, 0, Math.PI * 2);
+  ctx.arc(R - Math.cos(sa) * R * 0.17, R - Math.sin(sa) * R * 0.17, 3.5, 0, Math.PI * 2);
   ctx.fillStyle = theme.secHand;
   ctx.shadowColor = theme.secHand;
   ctx.shadowBlur = 8;
+  ctx.fill();
+
+  // Center boss
+  ctx.shadowBlur = 0;
+  ctx.beginPath();
+  ctx.arc(R, R, 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = theme.minHand;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(R, R, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = theme.secHand;
   ctx.fill();
 }
 
@@ -4383,33 +4420,38 @@ let _clockRAF = null;
 let _clockLastThemeSlot = -1;
 
 function _tickClock() {
-  const canvas = document.getElementById('clock-canvas');
-  const digital = document.getElementById('clock-digital');
-  if(!canvas || !digital) { _clockRAF = null; return; }
+  const canvas  = document.getElementById('clock-canvas');
+  const d12     = document.getElementById('clock-digital-12');
+  const d24     = document.getElementById('clock-digital-24');
+  if(!canvas || !d12 || !d24) { _clockRAF = null; return; }
 
-  const now = new Date();
+  const now   = new Date();
   const theme = _clockTheme();
 
-  // Update analog
+  // Analog
   _drawAnalogClock(canvas, now, theme);
 
-  // Update digital
-  const hh = now.getHours().toString().padStart(2, '0');
-  const mm = now.getMinutes().toString().padStart(2, '0');
-  const ss = now.getSeconds().toString().padStart(2, '0');
+  // Digital strings
+  const HH   = now.getHours().toString().padStart(2, '0');
+  const mm   = now.getMinutes().toString().padStart(2, '0');
+  const ss   = now.getSeconds().toString().padStart(2, '0');
   const ampm = now.getHours() < 12 ? 'AM' : 'PM';
   const hr12 = ((now.getHours() % 12) || 12).toString().padStart(2, '0');
-  digital.textContent = `${hr12}:${mm}:${ss} ${ampm}`;
+  d12.textContent = `${hr12}:${mm}:${ss} ${ampm}`;
+  d24.textContent = `${HH}:${mm}:${ss}`;
 
-  // Restyle digital gradient when theme slot changes
+  // Restyle colours when theme slot changes
   const slot = Math.floor(now.getHours() / 3);
   if(slot !== _clockLastThemeSlot) {
     _clockLastThemeSlot = slot;
-    digital.style.background = `linear-gradient(90deg, ${theme.digitalA}, ${theme.digitalB})`;
-    digital.style.webkitBackgroundClip = 'text';
-    digital.style.backgroundClip = 'text';
-    digital.style.webkitTextFillColor = 'transparent';
     canvas.style.filter = `drop-shadow(0 0 14px ${theme.glow})`;
+    const grad = `linear-gradient(90deg, ${theme.digitalA}, ${theme.digitalB})`;
+    [d12, d24].forEach(el => {
+      el.style.background = grad;
+      el.style.webkitBackgroundClip = 'text';
+      el.style.backgroundClip = 'text';
+      el.style.webkitTextFillColor = 'transparent';
+    });
   }
 
   _clockRAF = requestAnimationFrame(_tickClock);
