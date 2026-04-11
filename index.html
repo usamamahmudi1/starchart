@@ -397,6 +397,40 @@
   .kid-tasks-scroll::-webkit-scrollbar-track { background: transparent; }
   .kid-tasks-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 2px; }
 
+  /* Announcement banner (kids view) */
+  .announce-banner {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 300;
+    background: linear-gradient(135deg, rgba(20,10,60,0.97), rgba(10,20,50,0.97));
+    border-top: 2px solid rgba(255,215,0,0.5);
+    padding: 1rem 1.25rem;
+    box-shadow: 0 -8px 40px rgba(255,215,0,0.15);
+    transform: translateY(100%);
+    transition: transform 0.45s cubic-bezier(0.34,1.56,0.64,1);
+    backdrop-filter: blur(14px);
+  }
+  .announce-banner.show { transform: translateY(0); }
+  .announce-banner-title {
+    font-size:0.7rem; font-weight:800; letter-spacing:0.1em;
+    text-transform:uppercase; color:var(--gold); margin-bottom:0.5rem;
+    display:flex; align-items:center; gap:0.4rem;
+  }
+  .announce-banner-text {
+    font-size:1rem; line-height:1.5; margin-bottom:0.75rem;
+    white-space:pre-wrap;
+  }
+  .announce-banner-footer { display:flex; align-items:center; gap:0.75rem; }
+  .announce-got-it {
+    background:var(--gold); color:#1a1a2e; border:none;
+    padding:0.45rem 1.2rem; border-radius:999px;
+    font-family:'Nunito',sans-serif; font-weight:800; font-size:0.85rem;
+    cursor:pointer;
+  }
+  .announce-replay {
+    background:rgba(255,255,255,0.08); color:white; border:1px solid rgba(255,255,255,0.2);
+    padding:0.4rem 0.9rem; border-radius:999px;
+    font-family:'Nunito',sans-serif; font-size:0.8rem; cursor:pointer;
+  }
+
   /* Prayer times button */
   .prayer-btn {
     position: fixed; top: 1rem; right: 1rem;
@@ -1341,6 +1375,17 @@
   <button class="parent-nav-btn" onclick="showLogin()">🔐 Parent</button>
 </div>
 
+<!-- ANNOUNCEMENT BANNER (kids view) -->
+<div class="announce-banner" id="announce-banner">
+  <div class="announce-banner-title">📢 Message from Parent</div>
+  <div class="announce-banner-text" id="announce-banner-text"></div>
+  <div class="announce-banner-footer">
+    <button class="announce-got-it" onclick="dismissAnnouncement()">Got it! ✓</button>
+    <button class="announce-replay" onclick="replayAnnouncement()">🔊 Replay</button>
+    <span id="announce-banner-queue" style="font-size:0.72rem;opacity:0.45;margin-left:auto"></span>
+  </div>
+</div>
+
 <!-- PRAYER TIMES OVERLAY -->
 <div class="prayer-overlay" id="prayer-overlay" onclick="if(event.target===this)closePrayerTimes()">
   <div class="prayer-modal">
@@ -1383,6 +1428,7 @@
         <button class="tab-btn" onclick="switchTab('history',this)">📅 History</button>
         <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
         <button class="tab-btn" onclick="switchTab('log',this)">🕐 Log</button>
+        <button class="tab-btn" onclick="switchTab('announce',this)">📢 Announce</button>
       </div>
     </div>
     <div class="parent-content">
@@ -1590,6 +1636,12 @@
         <div id="log-content"></div>
       </div>
 
+      <!-- ANNOUNCE TAB -->
+      <div id="tab-announce" style="display:none">
+        <div class="section-title">📢 Announcements</div>
+        <div id="announce-content"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1634,7 +1686,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[] };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[] };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1680,6 +1732,7 @@ function scheduleRender(docId) {
       if(tabName.includes('History'))  renderHistoryTab();
       if(tabName.includes('Money'))    renderMoneyTab();
       if(tabName.includes('Log'))      renderLogTab();
+      if(tabName.includes('Announce')) renderAnnounceTab();
     }
     // Update pending badge on mark tab button regardless of active tab
     updatePendingBadge();
@@ -1820,7 +1873,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -1837,7 +1890,8 @@ function startListeners() {
       if(docId === 'pending')  { STATE.pending  = data.requests || {}; }
       if(docId === 'spending') { STATE.spending = data.records  || {}; }
       if(docId === 'bonuses')  { STATE.bonuses  = data.records  || {}; }
-      if(docId === 'tasklog')  { STATE.taskLog  = data.entries  || []; }
+      if(docId === 'tasklog')       { STATE.taskLog      = data.entries || []; }
+      if(docId === 'announcements') { STATE.announcements = data.items   || []; }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -1858,6 +1912,10 @@ async function saveStellarKeyFb(key) { STATE.stellarKey=key; await fbSet('settin
 async function savePending(p)     { STATE.pending=p;    await fbSet('pending',  { requests: p }); }
 async function saveSpending(s)    { STATE.spending=s;   await fbSet('spending', { records: s }); }
 async function saveBonuses(b)     { STATE.bonuses=b;    await fbSet('bonuses',  { records: b }); }
+async function saveAnnouncements(items) {
+  STATE.announcements = items;
+  await fbSet('announcements', { items });
+}
 async function saveTaskLog(entries) {
   const cutoff = Date.now() - 7*24*60*60*1000;
   const cleaned = entries.filter(e => e.ts > cutoff);
@@ -2119,6 +2177,9 @@ function checkTimeBasedReminders() {
     }
   });
 
+  // ── Check pending announcements from parent ──
+  checkPendingAnnouncements();
+
   // ── Prayer time call to prayer (Adhan announcement) — global, not per kid ──
   if(_prayerCache && _prayerCache.date === todayKey()) {
     const t = _prayerCache.timings;
@@ -2214,8 +2275,9 @@ function renderKidsView() {
       checkLevelUp(kid.id, kid.name, pts);
       checkWalletUpdate(kid.id, pts);
     }
-    // Time-based reminders triggered on each render too (debounced by flags)
+    // Time-based reminders + announcements triggered on each render too
     setTimeout(checkTimeBasedReminders, 500);
+    setTimeout(checkPendingAnnouncements, 300);
     const level = getEmoji(pts);
     const col   = COLORS[kid.color] || COLORS.pink;
     const stars  = starsForPoints(pts);
@@ -2402,7 +2464,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); renderAnnounceTab(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -3682,7 +3744,7 @@ async function historyAdjust(day, kidId, taskId, delta) {
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','approvals','tasks','kids','settings','history','money','log'].forEach(t=>{
+  ['mark','approvals','tasks','kids','settings','history','money','log','announce'].forEach(t=>{
     const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
   if(name==='mark')      renderMarkTab();
@@ -3693,6 +3755,7 @@ function switchTab(name, btn) {
   if(name==='history')   renderHistoryTab();
   if(name==='money')     renderMoneyTab();
   if(name==='log')       renderLogTab();
+  if(name==='announce')  renderAnnounceTab();
 }
 
 
@@ -4064,7 +4127,7 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
@@ -4072,7 +4135,8 @@ async function init() {
       fbGet('pending',  { requests:{} }),
       fbGet('spending', { records:{} }),
       fbGet('bonuses',  { records:{} }),
-      fbGet('tasklog',  { entries:[] }),
+      fbGet('tasklog',       { entries:[] }),
+      fbGet('announcements', { items:[] }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -4080,10 +4144,11 @@ async function init() {
     STATE.pw         = settingsData.pw         || DEFAULT_PW;
     STATE.levels     = settingsData.levels     || DEFAULT_EMOJI_LEVELS;
     STATE.stellarKey = settingsData.stellarKey || '';
-    STATE.pending  = pendingData.requests  || {};
-    STATE.spending = spendingData.records  || {};
-    STATE.bonuses  = bonusesData.records   || {};
-    STATE.taskLog  = tasklogData.entries   || [];
+    STATE.pending      = pendingData.requests   || {};
+    STATE.spending     = spendingData.records   || {};
+    STATE.bonuses      = bonusesData.records    || {};
+    STATE.taskLog      = tasklogData.entries    || [];
+    STATE.announcements = announcementsData.items || [];
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -4437,6 +4502,169 @@ async function handlePhotoUpload(kidId, input) {
   reader.readAsDataURL(file);
 }
 
+// ============ ANNOUNCEMENTS ============
+const _announcedIds   = new Set(); // TTS'd this session
+const _dismissedIds   = new Set(); // dismissed by kid this session
+
+function checkPendingAnnouncements() {
+  const banner   = document.getElementById('announce-banner');
+  if(!banner) return;
+  const active   = document.querySelector('[id^="view-"].active');
+  const onKids   = active && active.id === 'view-kids';
+  if(!onKids) return;
+
+  const now    = Date.now();
+  const today  = todayKey();
+  const due    = (STATE.announcements || [])
+    .filter(a => a.date === today && a.deliverAt <= now)
+    .sort((a,b) => a.deliverAt - b.deliverAt); // oldest first
+
+  const unread = due.filter(a => !_dismissedIds.has(a.id));
+  if(!unread.length) { banner.classList.remove('show'); return; }
+
+  const item = unread[0];
+  // Update banner text only if showing a different announcement
+  if(banner.dataset.currentId !== item.id) {
+    document.getElementById('announce-banner-text').textContent = item.text;
+    banner.dataset.currentId = item.id;
+  }
+  // Show queue count
+  const qEl = document.getElementById('announce-banner-queue');
+  if(qEl) qEl.textContent = unread.length > 1 ? `+${unread.length-1} more` : '';
+  banner.classList.add('show');
+
+  // TTS once per session per announcement
+  if(!_announcedIds.has(item.id)) {
+    _announcedIds.add(item.id);
+    setTimeout(() => _speakReminder(item.text), 600);
+  }
+}
+
+function dismissAnnouncement() {
+  const banner = document.getElementById('announce-banner');
+  const id = banner ? banner.dataset.currentId : null;
+  if(id) _dismissedIds.add(id);
+  checkPendingAnnouncements();
+}
+
+function replayAnnouncement() {
+  const banner = document.getElementById('announce-banner');
+  const text   = document.getElementById('announce-banner-text');
+  if(text && text.textContent) _speakReminder(text.textContent);
+}
+
+async function sendAnnouncement() {
+  const textEl   = document.getElementById('announce-text');
+  const text     = textEl ? textEl.value.trim() : '';
+  if(!text) { toast('Write a message first'); return; }
+
+  const isScheduled = document.getElementById('announce-schedule-toggle')?.checked;
+  const timeVal     = document.getElementById('announce-time')?.value;
+  let deliverAt     = Date.now();
+  if(isScheduled && timeVal) {
+    const [h, m] = timeVal.split(':').map(Number);
+    const d = new Date(); d.setHours(h, m, 0, 0);
+    if(d.getTime() < Date.now()) d.setDate(d.getDate()+1); // next occurrence if past
+    deliverAt = d.getTime();
+  }
+
+  const cutoff  = Date.now() - 2*24*60*60*1000;
+  const items   = (STATE.announcements || []).filter(a => a.createdAt > cutoff);
+  items.push({
+    id:        Date.now()+'-'+Math.random().toString(36).slice(2,6),
+    text,
+    deliverAt,
+    createdAt: Date.now(),
+    date:      todayKey()
+  });
+  await saveAnnouncements(items);
+  if(textEl) textEl.value = '';
+  const schedToggle = document.getElementById('announce-schedule-toggle');
+  if(schedToggle) { schedToggle.checked = false; document.getElementById('announce-time-wrap').style.display='none'; }
+  toast(isScheduled ? `📢 Scheduled for ${timeVal}` : '📢 Sent to kids!');
+}
+
+async function deleteAnnouncement(id) {
+  const items = (STATE.announcements || []).filter(a => a.id !== id);
+  await saveAnnouncements(items);
+}
+
+let _announceRecog = null;
+function startAnnounceVoice() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR) { toast('Voice input not supported 😕'); return; }
+  const btn = document.getElementById('announce-voice-btn');
+  if(_announceRecog) { _announceRecog.stop(); return; }
+  _announceRecog = new SR();
+  _announceRecog.lang = 'en-US';
+  _announceRecog.interimResults = false;
+  if(btn) { btn.textContent = '⏹ Stop'; }
+  toast('Listening… speak your announcement 🎤');
+  _announceRecog.onresult = e => {
+    const t = e.results[0][0].transcript;
+    const inp = document.getElementById('announce-text');
+    if(inp) inp.value = (inp.value ? inp.value+' ' : '') + t;
+    toast('Got it! ✓');
+  };
+  _announceRecog.onerror = e => {
+    toast(e.error==='not-allowed' ? 'Microphone denied 🎤' : "Couldn't hear — try again!");
+  };
+  _announceRecog.onend = () => {
+    _announceRecog = null;
+    if(btn) btn.textContent = '🎤 Speak';
+  };
+  _announceRecog.start();
+}
+
+function renderAnnounceTab() {
+  const el = document.getElementById('announce-content');
+  if(!el) return;
+  const today = todayKey();
+  const now   = Date.now();
+  const items = (STATE.announcements || [])
+    .filter(a => a.date === today)
+    .sort((a,b) => b.createdAt - a.createdAt);
+
+  const fmt = ts => new Date(ts).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'});
+  const listHtml = items.length ? items.map(a => {
+    const isDue  = a.deliverAt <= now;
+    const status = isDue
+      ? `<span style="color:#2ecc71">✅ Delivered at ${fmt(a.deliverAt)}</span>`
+      : `<span style="color:var(--gold)">⏳ Scheduled for ${fmt(a.deliverAt)}</span>`;
+    return `<div style="display:flex;align-items:flex-start;gap:0.75rem;padding:0.75rem;background:rgba(255,255,255,0.04);border-radius:12px;margin-bottom:0.5rem;border:1px solid rgba(255,255,255,0.08)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:0.9rem;margin-bottom:0.3rem;line-height:1.4">${escHtml(a.text)}</div>
+        <div style="font-size:0.72rem;opacity:0.6">${status}</div>
+      </div>
+      <button class="btn btn-sm btn-danger" style="padding:0.15rem 0.45rem;font-size:0.75rem;flex-shrink:0" onclick="deleteAnnouncement('${escHtml(a.id)}')">✕</button>
+    </div>`;
+  }).join('') : '<div style="opacity:0.4;font-size:0.85rem;margin-top:0.25rem">No announcements today yet.</div>';
+
+  el.innerHTML = `
+    <div class="p-card" style="margin-bottom:1rem">
+      <div style="font-size:0.78rem;font-weight:700;opacity:0.5;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem">New Announcement</div>
+      <textarea id="announce-text" rows="3" class="form-input"
+        placeholder="Write your message to the kids…"
+        style="width:100%;resize:vertical;min-height:80px;font-family:inherit;margin-bottom:0.6rem"></textarea>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-wrap:wrap;margin-bottom:0.75rem">
+        <button id="announce-voice-btn" class="btn btn-sm" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.2)" onclick="startAnnounceVoice()">🎤 Speak</button>
+        <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;user-select:none">
+          <input type="checkbox" id="announce-schedule-toggle" style="width:15px;height:15px;cursor:pointer"
+            onchange="document.getElementById('announce-time-wrap').style.display=this.checked?'flex':'none'">
+          Schedule for later
+        </label>
+        <div id="announce-time-wrap" style="display:none;align-items:center;gap:0.4rem">
+          <input type="time" id="announce-time" class="form-input" style="width:130px;padding:0.3rem 0.5rem">
+        </div>
+      </div>
+      <button class="btn btn-gold" onclick="sendAnnouncement()">📢 Send to Kids</button>
+    </div>
+    <div class="p-card">
+      <div style="font-size:0.78rem;font-weight:700;opacity:0.5;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem">Today's Announcements</div>
+      ${listHtml}
+    </div>`;
+}
+
 // ============ PRAYER TIMES ============
 const PRAYER_NAMES = [
   { key:'Fajr',    icon:'🌙', label:'Fajr'    },
@@ -4560,6 +4788,10 @@ window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKid
 window.renderLogTab=renderLogTab;
 window.checkTimeBasedReminders=checkTimeBasedReminders;
 window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
+window.sendAnnouncement=sendAnnouncement; window.deleteAnnouncement=deleteAnnouncement;
+window.dismissAnnouncement=dismissAnnouncement; window.replayAnnouncement=replayAnnouncement;
+window.startAnnounceVoice=startAnnounceVoice; window.renderAnnounceTab=renderAnnounceTab;
+window.checkPendingAnnouncements=checkPendingAnnouncements;
 
 // ============ STELLAR AI COACH ============
 function getStellarKey() {
