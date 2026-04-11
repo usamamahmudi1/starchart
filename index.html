@@ -2139,12 +2139,24 @@ function showLogin() {
   showView('login');
   setTimeout(()=>document.getElementById('login-pw').focus(), 80);
 }
+const PARENT_SESSION_KEY = 'sc_parent_session';
+const PARENT_SESSION_TTL = 10 * 60 * 1000; // 10 minutes
+
+function _saveParentSession()  { localStorage.setItem(PARENT_SESSION_KEY, Date.now().toString()); }
+function _clearParentSession() { localStorage.removeItem(PARENT_SESSION_KEY); }
+function _hasValidParentSession() {
+  const ts = parseInt(localStorage.getItem(PARENT_SESSION_KEY) || '0');
+  return ts > 0 && (Date.now() - ts) < PARENT_SESSION_TTL;
+}
+// Refresh the session timestamp on any interaction inside parent view
+function _touchParentSession() { if(_hasValidParentSession()) _saveParentSession(); }
+
 function doLogin() {
   const pw = document.getElementById('login-pw').value;
-  if(pw === STATE.pw) { showView('parent'); }
+  if(pw === STATE.pw) { _saveParentSession(); showView('parent'); }
   else { document.getElementById('login-err').textContent='Wrong password. Try again.'; document.getElementById('login-pw').value=''; document.getElementById('login-pw').focus(); }
 }
-function logout() { showView('kids'); }
+function logout() { _clearParentSession(); showView('kids'); }
 
 function toast(msg) {
   const t = document.getElementById('toast');
@@ -4072,6 +4084,7 @@ async function historyAdjust(day, kidId, taskId, delta) {
 }
 
 function switchTab(name, btn) {
+  _touchParentSession(); // any tab interaction resets the 10-min idle clock
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   ['mark','approvals','tasks','kids','settings','history','money','log','announce','warnings'].forEach(t=>{
@@ -4668,7 +4681,16 @@ async function init() {
   await autoFillLevels(); // auto-name any unnamed levels
   _loadFiredFlagsFromStorage(); // seed reminder flags from today's localStorage so reload doesn't re-fire
   document.getElementById('loading-screen').style.display='none';
-  showView('kids');
+  // Restore parent session if still valid, otherwise show kids view
+  if(_hasValidParentSession()) {
+    _saveParentSession(); // reset the 10-min clock on reload
+    showView('parent');
+    // Schedule auto-logout when session expires
+    setTimeout(() => { if(_hasValidParentSession()) {} else { _clearParentSession(); showView('kids'); toast('Parent session expired — logged out'); } }, PARENT_SESSION_TTL + 500);
+  } else {
+    _clearParentSession();
+    showView('kids');
+  }
   startClock();
   startListeners();
   // Update badge immediately after load so existing approvals show
