@@ -1847,10 +1847,12 @@ const COLORS = {
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
 const DEFAULT_WARNING_RULES = [
-  { id:'brush-breakfast', name:'Brush Teeth after Breakfast',       enabled:true, type:'brush', remindMins:30, warnMins:60, pts:5,
-    formula:'After breakfast is marked done, give a verbal reminder at {remindMins} min. If teeth are still not brushed at {warnMins} min, add a {pts}-point warning.' },
-  { id:'brush-dinner',    name:'Brush Teeth after Dinner',          enabled:true, type:'brush', remindMins:30, warnMins:60, pts:7,
-    formula:'After dinner is marked done, give a verbal reminder at {remindMins} min. If teeth are still not brushed at {warnMins} min, add a {pts}-point warning.' },
+  { id:'brush-breakfast', name:'Brush Teeth after Breakfast',        enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:5,
+    triggerTaskId:'', conditionTaskId:'',
+    formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
+  { id:'brush-dinner',    name:'Brush Teeth after Dinner',           enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:7,
+    triggerTaskId:'', conditionTaskId:'',
+    formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
   { id:'prayer-pre',      name:'Prayer Reminder (Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsBeforePrayer:40, pts:5,
     formula:'If the previous obligatory prayer was not done and only {minsBeforePrayer} min remain before the next prayer (Asr, Maghrib or Isha), add a {pts}-point warning.' },
 ];
@@ -2316,10 +2318,10 @@ function checkTimeBasedReminders() {
   const d = new Date();
   const totalMinsNow = d.getHours()*60 + d.getMinutes();
 
-  const bfTask  = _findTaskByRole('breakfast');
-  const btTask  = _findTaskByRole('brushteeth');
-  const dinTask = _findTaskByRole('dinner');
-  const btdTask = _findTaskByRole('brushteeth-dinner');
+  let bfTask  = _findTaskByRole('breakfast');
+  let btTask  = _findTaskByRole('brushteeth');
+  let dinTask = _findTaskByRole('dinner');
+  let btdTask = _findTaskByRole('brushteeth-dinner');
 
   // Helper: "HH:MM" → total minutes since midnight
   const toMins = t => { if(!t) return -1; const [h,m]=(t||'').split(':').map(Number); return h*60+m; };
@@ -2333,6 +2335,9 @@ function checkTimeBasedReminders() {
 
     // ── Condition 1: Breakfast → Brush Teeth (morning) ──
     const rBrushBf = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-breakfast');
+    // Allow rule to override which tasks to watch; fall back to name-based detection
+    if(rBrushBf?.triggerTaskId)   bfTask  = STATE.tasks.find(t=>t.id===rBrushBf.triggerTaskId)   || bfTask;
+    if(rBrushBf?.conditionTaskId) btTask  = STATE.tasks.find(t=>t.id===rBrushBf.conditionTaskId) || btTask;
     if(rBrushBf && rBrushBf.enabled !== false && bfTask && btTask) {
       const bfDone = (kidDone[bfTask.id]||0) > 0;
       const btDone = (kidDone[btTask.id]||0) > 0;
@@ -2351,7 +2356,7 @@ function checkTimeBasedReminders() {
           if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-brush-warn')) {
             _persistFlag(kid.id+'-brush-warn');
             _addAutoPenaltyWarning(kid.id, pts, warnReason);
-            setTimeout(()=>_speakReminder(`${first}! A ${pts} point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
+            // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
           }
         }
       }
@@ -2359,6 +2364,8 @@ function checkTimeBasedReminders() {
 
     // ── Condition 2: Dinner → Brush Teeth after Dinner ──
     const rBrushDin = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-dinner');
+    if(rBrushDin?.triggerTaskId)   dinTask  = STATE.tasks.find(t=>t.id===rBrushDin.triggerTaskId)   || dinTask;
+    if(rBrushDin?.conditionTaskId) btdTask  = STATE.tasks.find(t=>t.id===rBrushDin.conditionTaskId) || btdTask;
     if(rBrushDin && rBrushDin.enabled !== false && dinTask && btdTask) {
       const dinDone = (kidDone[dinTask.id]||0) > 0;
       const btdDone = (kidDone[btdTask.id]||0) > 0;
@@ -2377,7 +2384,7 @@ function checkTimeBasedReminders() {
           if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-btd-warn')) {
             _persistFlag(kid.id+'-btd-warn');
             _addAutoPenaltyWarning(kid.id, pts, warnReason);
-            setTimeout(()=>_speakReminder(`${first}! A ${pts} point warning has been added because you didn't brush your teeth after dinner. A parent will confirm it.`), 1500);
+            // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
           }
         }
       }
@@ -2399,9 +2406,7 @@ function checkTimeBasedReminders() {
         if(minsUntil >= mbp-half && minsUntil <= mbp+half && !_reminderFlags.has(flagKey)) {
           _persistFlag(flagKey);
           _addAutoPenaltyWarning(kid.id, pts, warnReason);
-          setTimeout(()=>_speakReminder(
-            `${first}! You have not prayed ${prevLabel} yet. Only about ${mbp} minutes remain before ${upLabel} prayer. A ${pts} point warning has been added.`
-          ), 800);
+          // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
         }
       });
     }
@@ -5568,24 +5573,39 @@ function renderWarningsTab() {
     const isBrush  = rule.type === 'brush';
     const isPrayer = rule.type === 'prayer';
 
+    const taskOpts = (sel) => `<option value="">— auto-detect by name —</option>` +
+      (STATE.tasks||[]).map(t=>`<option value="${t.id}" ${sel===t.id?'selected':''}>${escHtml(t.name)}</option>`).join('');
+
     const paramFields = isBrush ? `
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
-        <div>
-          <label class="form-label" style="font-size:0.7rem">Verbal reminder after (min)</label>
-          <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px">
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem">
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <div style="flex:1;min-width:160px">
+            <label class="form-label" style="font-size:0.7rem">Trigger task (when THIS is done…)</label>
+            <select class="form-input" id="wr-triggerTaskId-${idx}" style="width:100%">${taskOpts(rule.triggerTaskId||'')}</select>
+          </div>
+          <div style="flex:1;min-width:160px">
+            <label class="form-label" style="font-size:0.7rem">Condition task (…if THIS is not done)</label>
+            <select class="form-input" id="wr-conditionTaskId-${idx}" style="width:100%">${taskOpts(rule.conditionTaskId||'')}</select>
+          </div>
         </div>
-        <div>
-          <label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
-          <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px">
-        </div>
-        <div>
-          <label class="form-label" style="font-size:0.7rem">Points</label>
-          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
+          <div>
+            <label class="form-label" style="font-size:0.7rem">Verbal reminder after (min)</label>
+            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
+            <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px">
+          </div>
+          <div>
+            <label class="form-label" style="font-size:0.7rem">Points</label>
+            <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
+          </div>
         </div>
       </div>` : isPrayer ? `
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
         <div>
-          <label class="form-label" style="font-size:0.7rem">Minutes before prayer</label>
+          <label class="form-label" style="font-size:0.7rem">Minutes before next prayer</label>
           <input class="form-input" type="number" min="1" id="wr-minsBeforePrayer-${idx}" value="${rule.minsBeforePrayer||40}" style="width:80px">
         </div>
         <div>
@@ -5649,8 +5669,10 @@ async function saveWarningRule(idx) {
   rule.name    = document.getElementById(`wr-name-${idx}`)?.value?.trim()    || rule.name;
   rule.formula = document.getElementById(`wr-formula-${idx}`)?.value?.trim() || rule.formula;
   if(rule.type === 'brush') {
-    rule.remindMins = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value) || rule.remindMins;
-    rule.warnMins   = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)   || rule.warnMins;
+    rule.remindMins      = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value)      || rule.remindMins;
+    rule.warnMins        = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)        || rule.warnMins;
+    rule.triggerTaskId   = document.getElementById(`wr-triggerTaskId-${idx}`)?.value   ?? rule.triggerTaskId;
+    rule.conditionTaskId = document.getElementById(`wr-conditionTaskId-${idx}`)?.value ?? rule.conditionTaskId;
   }
   if(rule.type === 'prayer') {
     rule.minsBeforePrayer = parseInt(document.getElementById(`wr-minsBeforePrayer-${idx}`)?.value) || rule.minsBeforePrayer;
