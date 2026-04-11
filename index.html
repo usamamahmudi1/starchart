@@ -4526,20 +4526,20 @@ function _playAttentionChime() {
 // Prominent announcement TTS: cancels any ongoing speech, plays chime, then speaks
 function _speakAnnouncement(text) {
   try { speechSynthesis.cancel(); } catch(e) {}
-  const delay = _playAttentionChime();
-  const doSpeak = voices => {
-    const utt = new SpeechSynthesisUtterance(text);
-    utt.rate = 0.85; utt.pitch = 1.0; utt.volume = 1;
-    const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-              || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-    if(pick) utt.voice = pick;
-    speechSynthesis.speak(utt);
-  };
+  _playAttentionChime();
+  // Always speak after 1.2s — don't wait for onvoiceschanged (it may never fire)
   setTimeout(() => {
-    const v = speechSynthesis.getVoices();
-    if(v.length) doSpeak(v);
-    else { speechSynthesis.onvoiceschanged = () => { speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
-  }, delay);
+    try {
+      const utt = new SpeechSynthesisUtterance(text);
+      utt.rate = 0.88; utt.pitch = 1.0; utt.volume = 1;
+      // Apply preferred voice if already loaded; otherwise browser uses its default
+      const voices = speechSynthesis.getVoices();
+      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
+                || voices.find(v=>/en/i.test(v.lang));
+      if(pick) utt.voice = pick;
+      speechSynthesis.speak(utt);
+    } catch(e) {}
+  }, 1200);
 }
 
 const _announcedIds   = new Set(); // TTS'd this session
