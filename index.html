@@ -1582,6 +1582,7 @@
         <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
         <button class="tab-btn" onclick="switchTab('log',this)">🕐 Log</button>
         <button class="tab-btn" onclick="switchTab('announce',this)">📢 Announce</button>
+        <button class="tab-btn" onclick="switchTab('warnings',this)">⚠️ Warnings</button>
       </div>
     </div>
     <div class="parent-content">
@@ -1795,6 +1796,12 @@
         <div id="announce-content"></div>
       </div>
 
+      <!-- WARNINGS TAB -->
+      <div id="tab-warnings" style="display:none">
+        <div class="section-title">⚠️ Warnings</div>
+        <div id="warnings-content"></div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1839,7 +1846,16 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[] };
+const DEFAULT_WARNING_RULES = [
+  { id:'brush-breakfast', name:'Brush Teeth after Breakfast',       enabled:true, type:'brush', remindMins:30, warnMins:60, pts:5,
+    formula:'After breakfast is marked done, give a verbal reminder at {remindMins} min. If teeth are still not brushed at {warnMins} min, add a {pts}-point warning.' },
+  { id:'brush-dinner',    name:'Brush Teeth after Dinner',          enabled:true, type:'brush', remindMins:30, warnMins:60, pts:7,
+    formula:'After dinner is marked done, give a verbal reminder at {remindMins} min. If teeth are still not brushed at {warnMins} min, add a {pts}-point warning.' },
+  { id:'prayer-pre',      name:'Prayer Reminder (Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsBeforePrayer:40, pts:5,
+    formula:'If the previous obligatory prayer was not done and only {minsBeforePrayer} min remain before the next prayer (Asr, Maghrib or Isha), add a {pts}-point warning.' },
+];
+
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[], warningRules:[] };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1886,6 +1902,7 @@ function scheduleRender(docId) {
       if(tabName.includes('Money'))    renderMoneyTab();
       if(tabName.includes('Log'))      renderLogTab();
       if(tabName.includes('Announce')) renderAnnounceTab();
+      if(tabName.includes('Warning'))  renderWarningsTab();
     }
     // Refresh chat messages if chat overlay is open
     if(document.getElementById('chat-overlay').classList.contains('open')) renderChatMessages();
@@ -2028,7 +2045,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements','chat'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements','chat','warningrules'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -2048,6 +2065,7 @@ function startListeners() {
       if(docId === 'tasklog')       { STATE.taskLog      = data.entries || []; }
       if(docId === 'announcements') { STATE.announcements = data.items    || []; }
       if(docId === 'chat')          { STATE.chat          = data.messages || []; _updateChatUnread(); }
+      if(docId === 'warningrules')  { STATE.warningRules  = data.rules     || DEFAULT_WARNING_RULES.map(r=>({...r})); }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -2077,6 +2095,10 @@ async function saveTaskLog(entries) {
   const cleaned = entries.filter(e => e.ts > cutoff);
   STATE.taskLog = cleaned;
   await fbSet('tasklog', { entries: cleaned });
+}
+async function saveWarningRules(rules) {
+  STATE.warningRules = rules;
+  await fbSet('warningrules', { rules });
 }
 async function saveChat(messages) {
   const cutoff = Date.now() - 2*24*60*60*1000;
@@ -2310,74 +2332,75 @@ function checkTimeBasedReminders() {
     const kidDone = (todayDone[kid.id])||{};
 
     // ── Condition 1: Breakfast → Brush Teeth (morning) ──
-    if(bfTask && btTask) {
+    const rBrushBf = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-breakfast');
+    if(rBrushBf && rBrushBf.enabled !== false && bfTask && btTask) {
       const bfDone = (kidDone[bfTask.id]||0) > 0;
       const btDone = (kidDone[btTask.id]||0) > 0;
       if(bfDone && !btDone) {
         const bfTs = _getTaskDoneTime(kid.id, bfTask.name);
         if(bfTs) {
           const minsSince = (now - bfTs) / 60000;
-          const remindKey = kid.id+'-brush-remind';
-          const warnKey   = kid.id+'-brush-warn';
-          const warnReason = 'Did not brush teeth within 1 hour after breakfast';
-          if(minsSince >= 30 && !_reminderFlags.has(remindKey)) {
-            _persistFlag(remindKey);
-            _speakReminder(`${first}! You had breakfast more than 30 minutes ago. Don't forget to brush your teeth!`);
+          const remindMins = rBrushBf.remindMins || 30;
+          const warnMins   = rBrushBf.warnMins   || 60;
+          const pts        = rBrushBf.pts         || 5;
+          const warnReason = `Did not brush teeth within ${warnMins} min after breakfast`;
+          if(minsSince >= remindMins && !_reminderFlags.has(kid.id+'-brush-remind')) {
+            _persistFlag(kid.id+'-brush-remind');
+            _speakReminder(`${first}! You had breakfast more than ${remindMins} minutes ago. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= 60 && !_reminderFlags.has(warnKey)) {
-            _persistFlag(warnKey);
-            _addAutoPenaltyWarning(kid.id, 5, warnReason);
-            setTimeout(()=>_speakReminder(`${first}! A 5 point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
+          if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-brush-warn')) {
+            _persistFlag(kid.id+'-brush-warn');
+            _addAutoPenaltyWarning(kid.id, pts, warnReason);
+            setTimeout(()=>_speakReminder(`${first}! A ${pts} point warning has been added because you didn't brush your teeth after breakfast. A parent will confirm it.`), 1500);
           }
         }
       }
     }
 
     // ── Condition 2: Dinner → Brush Teeth after Dinner ──
-    if(dinTask && btdTask) {
+    const rBrushDin = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-dinner');
+    if(rBrushDin && rBrushDin.enabled !== false && dinTask && btdTask) {
       const dinDone = (kidDone[dinTask.id]||0) > 0;
       const btdDone = (kidDone[btdTask.id]||0) > 0;
       if(dinDone && !btdDone) {
         const dinTs = _getTaskDoneTime(kid.id, dinTask.name);
         if(dinTs) {
           const minsSince = (now - dinTs) / 60000;
-          const remindKey = kid.id+'-btd-remind';
-          const warnKey   = kid.id+'-btd-warn';
-          const warnReason = 'Did not brush teeth within 1 hour after dinner';
-          if(minsSince >= 30 && !_reminderFlags.has(remindKey)) {
-            _persistFlag(remindKey);
-            _speakReminder(`${first}! It's been more than 30 minutes since dinner. Don't forget to brush your teeth!`);
+          const remindMins = rBrushDin.remindMins || 30;
+          const warnMins   = rBrushDin.warnMins   || 60;
+          const pts        = rBrushDin.pts         || 7;
+          const warnReason = `Did not brush teeth within ${warnMins} min after dinner`;
+          if(minsSince >= remindMins && !_reminderFlags.has(kid.id+'-btd-remind')) {
+            _persistFlag(kid.id+'-btd-remind');
+            _speakReminder(`${first}! It's been more than ${remindMins} minutes since dinner. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= 60 && !_reminderFlags.has(warnKey)) {
-            _persistFlag(warnKey);
-            _addAutoPenaltyWarning(kid.id, 7, warnReason);
-            setTimeout(()=>_speakReminder(`${first}! A 7 point warning has been added because you didn't brush your teeth after dinner. A parent will confirm it.`), 1500);
+          if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-btd-warn')) {
+            _persistFlag(kid.id+'-btd-warn');
+            _addAutoPenaltyWarning(kid.id, pts, warnReason);
+            setTimeout(()=>_speakReminder(`${first}! A ${pts} point warning has been added because you didn't brush your teeth after dinner. A parent will confirm it.`), 1500);
           }
         }
       }
     }
 
-    // ── Condition 3: 40 mins before Asr/Maghrib/Isha → warn about the PREVIOUS prayer ──
-    // e.g. 40 min before Maghrib = Asr time is almost gone → warn that Asr wasn't done
-    if(_prayerCache && _prayerCache.date === todayKey()) {
-      const t = _prayerCache.timings;
-      // [upcomingKey, upcomingLabel, previousLabel]
-      [
-        ['Asr',     'Asr',     'Dhuhr'],
-        ['Maghrib', 'Maghrib', 'Asr'],
-        ['Isha',    'Isha',    'Maghrib'],
-      ].forEach(([key, upLabel, prevLabel]) => {
+    // ── Condition 3: N mins before Asr/Maghrib/Isha → warn about the PREVIOUS prayer ──
+    const rPrayer = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='prayer-pre');
+    if(rPrayer && rPrayer.enabled !== false && _prayerCache && _prayerCache.date === todayKey()) {
+      const mbp  = rPrayer.minsBeforePrayer || 40;
+      const pts  = rPrayer.pts || 5;
+      const half = Math.max(2, Math.round(mbp * 0.05)); // ±window (5% of lead time, min 2)
+      const t    = _prayerCache.timings;
+      [['Asr','Asr','Dhuhr'],['Maghrib','Maghrib','Asr'],['Isha','Isha','Maghrib']].forEach(([key, upLabel, prevLabel]) => {
         const pm = toMins(t[key]);
         if(pm < 0) return;
         const minsUntil = pm - totalMinsNow;
-        const flagKey   = kid.id+'-pre40-'+key;
-        const warnReason = `Did not pray ${prevLabel} — only 40 minutes left before ${upLabel}`;
-        // Fire within the 38–42 min window; _persistFlag prevents re-fire after reload
-        if(minsUntil >= 38 && minsUntil <= 42 && !_reminderFlags.has(flagKey)) {
+        const flagKey   = kid.id+'-pre'+mbp+'-'+key;
+        const warnReason = `Did not pray ${prevLabel} — only ${mbp} minutes left before ${upLabel}`;
+        if(minsUntil >= mbp-half && minsUntil <= mbp+half && !_reminderFlags.has(flagKey)) {
           _persistFlag(flagKey);
-          _addAutoPenaltyWarning(kid.id, 5, warnReason);
+          _addAutoPenaltyWarning(kid.id, pts, warnReason);
           setTimeout(()=>_speakReminder(
-            `${first}! You have not prayed ${prevLabel} yet. Only about 40 minutes remain before ${upLabel} prayer. A 5 point warning has been added.`
+            `${first}! You have not prayed ${prevLabel} yet. Only about ${mbp} minutes remain before ${upLabel} prayer. A ${pts} point warning has been added.`
           ), 800);
         }
       });
@@ -2672,7 +2695,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); renderAnnounceTab(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); renderAnnounceTab(); renderWarningsTab(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -4046,7 +4069,7 @@ async function historyAdjust(day, kidId, taskId, delta) {
 function switchTab(name, btn) {
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','approvals','tasks','kids','settings','history','money','log','announce'].forEach(t=>{
+  ['mark','approvals','tasks','kids','settings','history','money','log','announce','warnings'].forEach(t=>{
     const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
   if(name==='mark')      renderMarkTab();
@@ -4058,6 +4081,7 @@ function switchTab(name, btn) {
   if(name==='money')     renderMoneyTab();
   if(name==='log')       renderLogTab();
   if(name==='announce')  renderAnnounceTab();
+  if(name==='warnings')  renderWarningsTab();
 }
 
 
@@ -4603,7 +4627,7 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData, chatData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData, chatData, warningRulesData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
@@ -4614,6 +4638,7 @@ async function init() {
       fbGet('tasklog',       { entries:[] }),
       fbGet('announcements', { items:[] }),
       fbGet('chat',          { messages:[] }),
+      fbGet('warningrules',  { rules: DEFAULT_WARNING_RULES.map(r=>({...r})) }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -4627,6 +4652,9 @@ async function init() {
     STATE.taskLog      = tasklogData.entries    || [];
     STATE.announcements = announcementsData.items || [];
     STATE.chat          = chatData.messages || [];
+    STATE.warningRules  = (warningRulesData.rules && warningRulesData.rules.length)
+                          ? warningRulesData.rules
+                          : DEFAULT_WARNING_RULES.map(r=>({...r}));
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -5305,6 +5333,7 @@ window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.can
 window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
+window.renderWarningsTab=renderWarningsTab; window.issueManualWarning=issueManualWarning; window.saveWarningRule=saveWarningRule;
 window.checkTimeBasedReminders=checkTimeBasedReminders;
 // ============ CHAT ============
 let _chatKidId = null; // which kid is chatting (kids view only)
@@ -5498,6 +5527,142 @@ function startChatVoice() {
 }
 
 window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
+// ============ WARNINGS TAB ============
+function renderWarningsTab() {
+  const el = document.getElementById('warnings-content');
+  if(!el) return;
+  const kids = STATE.kids || [];
+  const rules = STATE.warningRules && STATE.warningRules.length
+    ? STATE.warningRules : DEFAULT_WARNING_RULES.map(r=>({...r}));
+
+  // ── Manual warning section ──
+  const kidOpts = kids.map(k=>`<option value="${k.id}">${k.emoji||'⭐'} ${escHtml(k.name)}</option>`).join('');
+  const manualHtml = `
+    <div class="p-card" style="margin-bottom:1.2rem;border-left:3px solid #e74c3c">
+      <div style="font-weight:800;font-size:1rem;color:#e74c3c;margin-bottom:0.9rem">🚨 Issue Manual Warning</div>
+      ${!kids.length ? '<div style="opacity:0.5;font-size:0.85rem">No children added yet.</div>' : `
+      <div style="display:flex;flex-direction:column;gap:0.6rem">
+        <div>
+          <label class="form-label">Child</label>
+          <select class="form-input" id="warn-kid-sel" style="width:100%">${kidOpts}</select>
+        </div>
+        <div>
+          <label class="form-label">Reason for warning</label>
+          <input class="form-input" id="warn-reason" placeholder="e.g. Left room messy after being asked" style="width:100%">
+        </div>
+        <div>
+          <label class="form-label">Points deducted if confirmed as penalty</label>
+          <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:120px">
+        </div>
+        <button class="btn" style="background:rgba(231,76,60,0.25);border:1px solid rgba(231,76,60,0.5);color:#e74c3c;align-self:flex-start"
+          onclick="issueManualWarning()">⚠️ Issue Warning</button>
+      </div>`}
+    </div>`;
+
+  // ── Auto-warning rules section ──
+  const ruleCards = rules.map((rule, idx) => {
+    const enabled = rule.enabled !== false;
+    const fmtFormula = (rule.formula||'').replace(/\{(\w+)\}/g, (_, k) =>
+      `<span style="color:#ffd700;font-weight:700">${rule[k]??k}</span>`);
+
+    const isBrush  = rule.type === 'brush';
+    const isPrayer = rule.type === 'prayer';
+
+    const paramFields = isBrush ? `
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
+        <div>
+          <label class="form-label" style="font-size:0.7rem">Verbal reminder after (min)</label>
+          <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
+          <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.7rem">Points</label>
+          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
+        </div>
+      </div>` : isPrayer ? `
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
+        <div>
+          <label class="form-label" style="font-size:0.7rem">Minutes before prayer</label>
+          <input class="form-input" type="number" min="1" id="wr-minsBeforePrayer-${idx}" value="${rule.minsBeforePrayer||40}" style="width:80px">
+        </div>
+        <div>
+          <label class="form-label" style="font-size:0.7rem">Points</label>
+          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px">
+        </div>
+      </div>` : '';
+
+    return `<div class="p-card" style="margin-bottom:0.9rem;border-left:3px solid ${enabled?'#FFA500':'rgba(255,255,255,0.15)'}">
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem">
+        <span style="font-size:1.2rem">${enabled?'⚠️':'💤'}</span>
+        <span style="font-weight:700;font-size:0.95rem;flex:1">${escHtml(rule.name)}</span>
+        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.8rem;cursor:pointer;flex-shrink:0">
+          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer">
+          Enabled
+        </label>
+      </div>
+      <div style="margin-bottom:0.5rem">
+        <label class="form-label" style="font-size:0.7rem">Rule name</label>
+        <input class="form-input" id="wr-name-${idx}" value="${escHtml(rule.name)}" style="width:100%">
+      </div>
+      ${paramFields}
+      <div style="margin-top:0.6rem">
+        <label class="form-label" style="font-size:0.7rem">Formula description</label>
+        <textarea class="form-input" id="wr-formula-${idx}" rows="2"
+          style="width:100%;font-size:0.78rem;resize:vertical">${escHtml(rule.formula||'')}</textarea>
+      </div>
+      <div style="font-size:0.73rem;opacity:0.5;margin-top:0.4rem;line-height:1.5">
+        Preview: ${fmtFormula}
+      </div>
+      <button class="btn btn-approve btn-sm" style="margin-top:0.7rem" onclick="saveWarningRule(${idx})">💾 Save Rule</button>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = manualHtml +
+    `<div style="font-weight:800;font-size:1rem;color:#FFA500;margin:1.2rem 0 0.7rem">🤖 Automatic Warning Rules</div>` +
+    ruleCards;
+}
+
+async function issueManualWarning() {
+  const sel    = document.getElementById('warn-kid-sel');
+  const reason = (document.getElementById('warn-reason')?.value||'').trim();
+  const pts    = parseInt(document.getElementById('warn-pts')?.value||'0');
+  if(!sel || !reason) { toast('Enter a reason for the warning'); return; }
+  if(!pts || pts < 1) { toast('Enter points to deduct'); return; }
+  const kidId = sel.value;
+  await _addAutoPenaltyWarning(kidId, pts, reason);
+  document.getElementById('warn-reason').value = '';
+  document.getElementById('warn-pts').value    = '';
+  toast('⚠️ Warning issued — pending confirmation');
+  renderWarningsTab();
+}
+
+async function saveWarningRule(idx) {
+  const rules = JSON.parse(JSON.stringify(
+    (STATE.warningRules && STATE.warningRules.length) ? STATE.warningRules : DEFAULT_WARNING_RULES.map(r=>({...r}))
+  ));
+  const rule = rules[idx];
+  if(!rule) return;
+  rule.enabled = document.getElementById(`wr-enabled-${idx}`)?.checked !== false;
+  rule.name    = document.getElementById(`wr-name-${idx}`)?.value?.trim()    || rule.name;
+  rule.formula = document.getElementById(`wr-formula-${idx}`)?.value?.trim() || rule.formula;
+  if(rule.type === 'brush') {
+    rule.remindMins = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value) || rule.remindMins;
+    rule.warnMins   = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)   || rule.warnMins;
+  }
+  if(rule.type === 'prayer') {
+    rule.minsBeforePrayer = parseInt(document.getElementById(`wr-minsBeforePrayer-${idx}`)?.value) || rule.minsBeforePrayer;
+  }
+  rule.pts = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
+  await saveWarningRules(rules);
+  // Clear persisted reminder flags so updated timings take effect today
+  try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
+  toast('✓ Rule saved');
+  renderWarningsTab();
+}
+
 window.openChat=openChat; window.closeChat=closeChat; window.sendChatMessage=sendChatMessage;
 window.selectChatKid=selectChatKid; window.startChatVoice=startChatVoice; window.renderChatMessages=renderChatMessages;
 window.sendAnnouncement=sendAnnouncement; window.deleteAnnouncement=deleteAnnouncement;
