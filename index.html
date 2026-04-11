@@ -431,7 +431,7 @@
     font-family:'Nunito',sans-serif; font-size:0.8rem; cursor:pointer;
   }
 
-  /* Prayer times button */
+  /* Floating action buttons (prayer + chat) */
   .prayer-btn {
     position: fixed; top: 1rem; right: 1rem;
     width: 52px; height: 52px;
@@ -446,6 +446,91 @@
     transition: all 0.2s;
   }
   .prayer-btn:hover { transform: scale(1.1); box-shadow: 0 0 26px rgba(255,215,0,0.45); }
+  .chat-btn {
+    position: fixed; top: 4.6rem; right: 1rem;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, rgba(52,152,219,0.25), rgba(26,188,156,0.15));
+    border: 2px solid rgba(52,152,219,0.5);
+    color: white; font-size: 1.5rem;
+    cursor: pointer; z-index: 100;
+    display: none; align-items: center; justify-content: center;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 18px rgba(52,152,219,0.2);
+    transition: all 0.2s;
+  }
+  .chat-btn:hover { transform: scale(1.1); box-shadow: 0 0 26px rgba(52,152,219,0.45); }
+  .chat-btn.has-unread { border-color: var(--gold); box-shadow: 0 0 18px rgba(255,215,0,0.4); animation: pulse-chat 1.8s ease-in-out infinite; }
+  @keyframes pulse-chat { 0%,100%{box-shadow:0 0 14px rgba(255,215,0,0.3)} 50%{box-shadow:0 0 28px rgba(255,215,0,0.6)} }
+
+  /* Chat overlay */
+  .chat-overlay {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.75); backdrop-filter: blur(8px);
+    display: none; align-items: flex-end; justify-content: center;
+    padding: 0;
+  }
+  .chat-overlay.open { display: flex; }
+  .chat-modal {
+    background: linear-gradient(160deg, #1a1040 0%, #0d1525 100%);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-bottom: none;
+    border-radius: 24px 24px 0 0;
+    width: 100%; max-width: 560px;
+    height: 82vh; display: flex; flex-direction: column;
+    box-shadow: 0 -8px 60px rgba(0,0,0,0.6);
+  }
+  .chat-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1rem 1.25rem 0.75rem;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .chat-title { font-family: 'Fredoka One', cursive; font-size: 1.3rem; color: #3498DB; }
+  .chat-close {
+    background: rgba(255,255,255,0.08); border: none; color: white;
+    width: 32px; height: 32px; border-radius: 50%;
+    font-size: 1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .chat-kid-bar {
+    display: none; align-items: center; gap: 0.5rem; flex-wrap: wrap;
+    padding: 0.6rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.07);
+    flex-shrink: 0; overflow-x: auto; scrollbar-width: none;
+  }
+  .chat-kid-bar::-webkit-scrollbar { display: none; }
+  .chat-messages {
+    flex: 1; overflow-y: auto; padding: 1rem 1rem 0.5rem;
+    display: flex; flex-direction: column; gap: 0.1rem;
+    scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent;
+  }
+  .chat-bubble-wrap { display: flex; flex-direction: column; margin-bottom: 0.6rem; }
+  .chat-bubble-wrap.mine { align-items: flex-end; }
+  .chat-bubble-wrap.theirs { align-items: flex-start; }
+  .chat-sender-label { font-size: 0.67rem; opacity: 0.45; margin-bottom: 3px; }
+  .chat-bubble {
+    max-width: 75%; padding: 0.55rem 0.85rem;
+    font-size: 0.93rem; line-height: 1.45; word-wrap: break-word;
+  }
+  .chat-bubble.mine { border-radius: 18px 18px 4px 18px; }
+  .chat-bubble.theirs { border-radius: 18px 18px 18px 4px; }
+  .chat-input-wrap {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.75rem 1rem; border-top: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+  .chat-input {
+    flex: 1; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 999px; color: white; padding: 0.55rem 1rem;
+    font-family: 'Nunito', sans-serif; font-size: 0.9rem; outline: none;
+  }
+  .chat-input:focus { border-color: rgba(52,152,219,0.5); }
+  .chat-voice-btn, .chat-send-btn {
+    background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15);
+    color: white; border-radius: 999px; padding: 0.5rem 0.8rem;
+    font-family: 'Nunito', sans-serif; font-size: 0.85rem; cursor: pointer;
+    flex-shrink: 0; transition: all 0.2s;
+  }
+  .chat-send-btn { background: rgba(52,152,219,0.25); border-color: rgba(52,152,219,0.4); }
+  .chat-send-btn:hover { background: rgba(52,152,219,0.45); }
 
   /* Prayer times overlay */
   .prayer-overlay {
@@ -1364,9 +1449,30 @@
 
 <div class="stars" id="stars-bg"></div>
 
+<!-- Global floating buttons (prayer + chat) — visible on kids AND parent views -->
+<button class="prayer-btn" id="prayer-btn" onclick="openPrayerTimes()" title="Prayer Times" style="display:none">🕌</button>
+<button class="chat-btn"   id="chat-btn"   onclick="openChat()"        title="Family Chat"  style="display:none">💬</button>
+
+<!-- CHAT OVERLAY -->
+<div class="chat-overlay" id="chat-overlay" onclick="if(event.target===this)closeChat()">
+  <div class="chat-modal">
+    <div class="chat-header">
+      <div class="chat-title">💬 Family Chat</div>
+      <button class="chat-close" onclick="closeChat()">✕</button>
+    </div>
+    <div class="chat-kid-bar" id="chat-kid-bar"></div>
+    <div class="chat-messages" id="chat-messages"></div>
+    <div class="chat-input-wrap">
+      <input class="chat-input" id="chat-input" placeholder="Type a message…"
+        onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChatMessage()}">
+      <button class="chat-voice-btn" id="chat-voice-btn" onclick="startChatVoice()">🎤</button>
+      <button class="chat-send-btn" onclick="sendChatMessage()">Send ➤</button>
+    </div>
+  </div>
+</div>
+
 <!-- KIDS VIEW -->
 <div id="view-kids">
-  <button class="prayer-btn" onclick="openPrayerTimes()" title="Prayer Times">🕌</button>
   <div class="kids-header">
     <div class="kids-title">✨ Star Chart ✨</div>
     <div class="kids-date" id="kids-date"></div>
@@ -1686,7 +1792,7 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[] };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[] };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1734,6 +1840,8 @@ function scheduleRender(docId) {
       if(tabName.includes('Log'))      renderLogTab();
       if(tabName.includes('Announce')) renderAnnounceTab();
     }
+    // Refresh chat messages if chat overlay is open
+    if(document.getElementById('chat-overlay').classList.contains('open')) renderChatMessages();
     // Update pending badge on mark tab button regardless of active tab
     updatePendingBadge();
   }, 80);
@@ -1873,7 +1981,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements','chat'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -1891,7 +1999,8 @@ function startListeners() {
       if(docId === 'spending') { STATE.spending = data.records  || {}; }
       if(docId === 'bonuses')  { STATE.bonuses  = data.records  || {}; }
       if(docId === 'tasklog')       { STATE.taskLog      = data.entries || []; }
-      if(docId === 'announcements') { STATE.announcements = data.items   || []; }
+      if(docId === 'announcements') { STATE.announcements = data.items    || []; }
+      if(docId === 'chat')          { STATE.chat          = data.messages || []; _updateChatUnread(); }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -1922,6 +2031,12 @@ async function saveTaskLog(entries) {
   STATE.taskLog = cleaned;
   await fbSet('tasklog', { entries: cleaned });
 }
+async function saveChat(messages) {
+  const cutoff = Date.now() - 2*24*60*60*1000;
+  const cleaned = messages.filter(m => m.ts > cutoff);
+  STATE.chat = cleaned;
+  await fbSet('chat', { messages: cleaned });
+}
 async function addTaskLogEntry(kidId, taskName, by) {
   const kid = STATE.kids.find(k=>k.id===kidId);
   const entries = (STATE.taskLog || []).slice();
@@ -1936,6 +2051,12 @@ function getLevels(){ return STATE.levels && STATE.levels.length ? STATE.levels 
 function showView(v) {
   document.querySelectorAll('[id^="view-"]').forEach(el=>el.classList.remove('active'));
   document.getElementById('view-'+v).classList.add('active');
+  // Show floating buttons on kids + parent views, hide on login
+  const showBtns = (v === 'kids' || v === 'parent');
+  const pBtn = document.getElementById('prayer-btn');
+  const cBtn = document.getElementById('chat-btn');
+  if(pBtn) pBtn.style.display = showBtns ? 'flex' : 'none';
+  if(cBtn) cBtn.style.display = showBtns ? 'flex' : 'none';
   // Only render if init has completed — listeners handle rendering during init
   if(!STATE._ready) return;
   if(v==='kids')   renderKidsView();
@@ -4127,7 +4248,7 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData, chatData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
@@ -4137,6 +4258,7 @@ async function init() {
       fbGet('bonuses',  { records:{} }),
       fbGet('tasklog',       { entries:[] }),
       fbGet('announcements', { items:[] }),
+      fbGet('chat',          { messages:[] }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -4149,6 +4271,7 @@ async function init() {
     STATE.bonuses      = bonusesData.records    || {};
     STATE.taskLog      = tasklogData.entries    || [];
     STATE.announcements = announcementsData.items || [];
+    STATE.chat          = chatData.messages || [];
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
@@ -4826,7 +4949,200 @@ window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; 
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
 window.checkTimeBasedReminders=checkTimeBasedReminders;
+// ============ CHAT ============
+let _chatKidId = null; // which kid is chatting (kids view only)
+let _chatLastSeen = 0; // timestamp of last message seen by this session
+
+function _updateChatUnread() {
+  const btn = document.getElementById('chat-btn');
+  if(!btn) return;
+  const msgs = STATE.chat || [];
+  const last = msgs.length ? msgs[msgs.length-1].ts : 0;
+  if(last > _chatLastSeen) {
+    btn.classList.add('has-unread');
+  } else {
+    btn.classList.remove('has-unread');
+  }
+}
+
+function openChat() {
+  // Mark all current messages as seen
+  const msgs = STATE.chat || [];
+  _chatLastSeen = msgs.length ? msgs[msgs.length-1].ts : Date.now();
+  document.getElementById('chat-btn').classList.remove('has-unread');
+
+  const overlay = document.getElementById('chat-overlay');
+  overlay.classList.add('open');
+
+  // Determine context: are we on kids or parent view?
+  const onKids = document.getElementById('view-kids').classList.contains('active');
+  renderChatKidSelector(onKids);
+  renderChatMessages();
+
+  // Auto-focus input
+  setTimeout(() => document.getElementById('chat-input').focus(), 150);
+}
+
+function closeChat() {
+  document.getElementById('chat-overlay').classList.remove('open');
+  // Stop any voice recognition
+  if(window._chatRecog) { try { window._chatRecog.stop(); } catch(e){} window._chatRecog = null; }
+  document.getElementById('chat-voice-btn').textContent = '🎤';
+}
+
+function renderChatKidSelector(onKids) {
+  const bar = document.getElementById('chat-kid-bar');
+  if(!onKids) {
+    // Parent view — no kid selector, sender is always "Parent"
+    bar.style.display = 'none';
+    bar.innerHTML = '';
+    return;
+  }
+  // Kids view — show kid avatar buttons to pick identity
+  const kids = STATE.kids || [];
+  if(!kids.length) { bar.style.display='none'; return; }
+  bar.style.display = 'flex';
+
+  // Auto-select first kid if none selected or if selection is invalid
+  if(!_chatKidId || !kids.find(k=>k.id===_chatKidId)) {
+    _chatKidId = kids[0].id;
+  }
+
+  bar.innerHTML = '<span style="font-size:0.75rem;opacity:0.5;flex-shrink:0">Chatting as:</span>' +
+    kids.map(k => {
+      const active = k.id === _chatKidId;
+      return `<button onclick="selectChatKid('${k.id}')" style="
+        background: ${active ? 'rgba(52,152,219,0.35)' : 'rgba(255,255,255,0.07)'};
+        border: 1.5px solid ${active ? 'rgba(52,152,219,0.7)' : 'rgba(255,255,255,0.15)'};
+        color: white; border-radius: 999px; padding: 0.3rem 0.75rem;
+        font-family: 'Nunito', sans-serif; font-size: 0.82rem; cursor: pointer;
+        transition: all 0.15s; white-space: nowrap;
+      ">${k.avatar||'👤'} ${k.name}</button>`;
+    }).join('');
+}
+
+function selectChatKid(kidId) {
+  _chatKidId = kidId;
+  renderChatKidSelector(true);
+  document.getElementById('chat-input').focus();
+}
+
+function _chatSenderId() {
+  const onKids = document.getElementById('view-kids').classList.contains('active');
+  if(!onKids) return 'parent';
+  return _chatKidId || (STATE.kids[0] && STATE.kids[0].id) || 'kid';
+}
+function _chatSenderName(senderId) {
+  if(senderId === 'parent') return 'Parent';
+  const k = (STATE.kids||[]).find(k=>k.id===senderId);
+  return k ? k.name : senderId;
+}
+function _chatSenderAvatar(senderId) {
+  if(senderId === 'parent') return '👨‍👩‍👧';
+  const k = (STATE.kids||[]).find(k=>k.id===senderId);
+  return k ? (k.avatar||'👤') : '👤';
+}
+
+function renderChatMessages() {
+  const container = document.getElementById('chat-messages');
+  if(!container) return;
+  const msgs = STATE.chat || [];
+  const myId = _chatSenderId();
+
+  if(!msgs.length) {
+    container.innerHTML = '<div style="text-align:center;opacity:0.3;padding:2rem;font-size:0.9rem">No messages yet. Say hello! 👋</div>';
+    return;
+  }
+
+  // Group consecutive messages from same sender
+  let html = '';
+  let prevSender = null;
+  const now = Date.now();
+  msgs.forEach((msg, i) => {
+    const isMine = msg.sender === myId;
+    const senderChanged = msg.sender !== prevSender;
+    prevSender = msg.sender;
+
+    const name = _chatSenderName(msg.sender);
+    const avatar = _chatSenderAvatar(msg.sender);
+    const timeStr = _chatTimeAgo(msg.ts, now);
+
+    html += `<div class="chat-bubble-wrap ${isMine ? 'mine' : 'theirs'}">`;
+    if(senderChanged) {
+      html += `<div class="chat-sender-label">${isMine ? '' : avatar + ' '}${name} · ${timeStr}</div>`;
+    }
+    html += `<div class="chat-bubble ${isMine ? 'mine' : 'theirs'}" style="
+      background: ${isMine ? 'rgba(52,152,219,0.28)' : 'rgba(255,255,255,0.1)'};
+      border: 1px solid ${isMine ? 'rgba(52,152,219,0.4)' : 'rgba(255,255,255,0.12)'};
+    ">${_escHtml(msg.text)}</div>`;
+    html += '</div>';
+  });
+  container.innerHTML = html;
+  // Scroll to bottom
+  container.scrollTop = container.scrollHeight;
+}
+
+function _chatTimeAgo(ts, now) {
+  const diff = now - ts;
+  if(diff < 60000) return 'just now';
+  if(diff < 3600000) return Math.floor(diff/60000) + 'm ago';
+  if(diff < 86400000) return Math.floor(diff/3600000) + 'h ago';
+  return Math.floor(diff/86400000) + 'd ago';
+}
+
+function _escHtml(str) {
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const text = (input.value || '').trim();
+  if(!text) return;
+
+  input.value = '';
+  const sender = _chatSenderId();
+  const msg = { sender, text, ts: Date.now() };
+
+  const msgs = (STATE.chat || []).slice();
+  msgs.push(msg);
+  _chatLastSeen = msg.ts;
+  document.getElementById('chat-btn').classList.remove('has-unread');
+  await saveChat(msgs);
+  renderChatMessages();
+}
+
+function startChatVoice() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SpeechRec) { toast('Voice input not supported in this browser'); return; }
+
+  const voiceBtn = document.getElementById('chat-voice-btn');
+  if(window._chatRecog) {
+    window._chatRecog.stop();
+    window._chatRecog = null;
+    voiceBtn.textContent = '🎤';
+    return;
+  }
+
+  const rec = new SpeechRec();
+  rec.lang = 'en-US'; rec.continuous = false; rec.interimResults = false;
+  window._chatRecog = rec;
+  voiceBtn.textContent = '⏹';
+
+  rec.onresult = e => {
+    const transcript = e.results[0][0].transcript;
+    const input = document.getElementById('chat-input');
+    input.value = (input.value + ' ' + transcript).trim();
+    voiceBtn.textContent = '🎤';
+    window._chatRecog = null;
+  };
+  rec.onerror = () => { voiceBtn.textContent = '🎤'; window._chatRecog = null; };
+  rec.onend   = () => { voiceBtn.textContent = '🎤'; window._chatRecog = null; };
+  rec.start();
+}
+
 window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
+window.openChat=openChat; window.closeChat=closeChat; window.sendChatMessage=sendChatMessage;
+window.selectChatKid=selectChatKid; window.startChatVoice=startChatVoice; window.renderChatMessages=renderChatMessages;
 window.sendAnnouncement=sendAnnouncement; window.deleteAnnouncement=deleteAnnouncement;
 window.dismissAnnouncement=dismissAnnouncement; window.replayAnnouncement=replayAnnouncement;
 window.startAnnounceVoice=startAnnounceVoice; window.renderAnnounceTab=renderAnnounceTab;
