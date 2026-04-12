@@ -1589,7 +1589,7 @@
         <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
         <button class="tab-btn" onclick="switchTab('log',this)">🕐 Log</button>
         <button class="tab-btn" onclick="switchTab('announce',this)">📢 Announce</button>
-        <button class="tab-btn" onclick="switchTab('warnings',this)">⚠️ Warnings</button>
+        <button class="tab-btn" onclick="switchTab('warnings',this)">⚙️ More</button>
       </div>
     </div>
     <div class="parent-content">
@@ -1805,7 +1805,7 @@
 
       <!-- WARNINGS TAB -->
       <div id="tab-warnings" style="display:none">
-        <div class="section-title">⚠️ Warnings</div>
+        <div class="section-title">⚙️ More</div>
         <div id="warnings-content"></div>
       </div>
 
@@ -1856,11 +1856,14 @@ const COLORS = {
 const DEFAULT_WARNING_RULES = [
   { id:'brush-breakfast', name:'Brush Teeth after Breakfast',        enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:5,
     triggerTaskId:'', conditionTaskId:'',
+    remindEnabled:true, warnEnabled:true, autoDismissOnTaskDone:true, requireParentApproval:true,
     formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
   { id:'brush-dinner',    name:'Brush Teeth after Dinner',           enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:7,
     triggerTaskId:'', conditionTaskId:'',
+    remindEnabled:true, warnEnabled:true, autoDismissOnTaskDone:true, requireParentApproval:true,
     formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
   { id:'prayer-pre',      name:'Missed Prayer Warning (Dhuhr/Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsAfterPrayer:40, pts:5,
+    remindEnabled:false, warnEnabled:true, autoDismissOnTaskDone:false, requireParentApproval:true,
     formula:'If {minsAfterPrayer} minutes have passed since a prayer time (Dhuhr, Asr, Maghrib or Isha) and the prayer has not been done, add a {pts}-point warning.' },
 ];
 
@@ -1911,7 +1914,7 @@ function scheduleRender(docId) {
       if(tabName.includes('Money'))    renderMoneyTab();
       if(tabName.includes('Log'))      renderLogTab();
       if(tabName.includes('Announce')) renderAnnounceTab();
-      if(tabName.includes('Warning'))  renderWarningsTab();
+      if(tabName.includes('More'))     renderWarningsTab();
     }
     // Refresh chat messages if chat overlay is open
     if(document.getElementById('chat-overlay').classList.contains('open')) renderChatMessages();
@@ -2297,24 +2300,77 @@ function _speakReminder(text) {
 
 // Auto-add a pending penalty warning on behalf of parent (no duplicate if same reason exists today,
 // and no re-add if parent has already dismissed this exact reason today).
-async function _addAutoPenaltyWarning(kidId, pts, reason) {
+async function _addAutoPenaltyWarning(kidId, pts, reason, opts = {}) {
+  const requireApproval    = opts.requireApproval    !== false; // default true
+  const conditionTaskId    = opts.conditionTaskId    || '';
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]) done[tk]={};
-  if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
-  if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
-  // Already pending with same reason?
-  const already = done[tk].pendingPenalties[kidId].some(p=>p.reason===reason);
-  if(already) return;
   // Parent already dismissed this exact auto-warning today → never re-add
   const suppressed = ((done[tk].suppressedAutoWarnings||{})[kidId]||[]).includes(reason);
   if(suppressed) return;
-  done[tk].pendingPenalties[kidId].push({
-    pts, reason,
-    id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
-    auto: true
-  });
+
+  if(requireApproval) {
+    // → pendingPenalties (requires parent confirmation)
+    if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
+    if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
+    const already = done[tk].pendingPenalties[kidId].some(p=>p.reason===reason);
+    if(already) return;
+    done[tk].pendingPenalties[kidId].push({
+      pts, reason,
+      id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
+      auto: true, conditionTaskId
+    });
+  } else {
+    // → xpenalties directly (no parent confirmation needed)
+    if(!done[tk].xpenalties) done[tk].xpenalties={};
+    if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
+    const already = done[tk].xpenalties[kidId].some(p=>p.reason===reason && p.auto);
+    if(already) return;
+    done[tk].xpenalties[kidId].push({
+      pts, reason,
+      id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
+      auto: true
+    });
+  }
   await saveDone(done);
+}
+
+// Auto-dismiss pending warnings when the condition task has been completed
+async function _checkAutoDismissWarnings() {
+  const tk = todayKey();
+  const todayDone = STATE.done[tk] || {};
+  const rules = STATE.warningRules || DEFAULT_WARNING_RULES;
+  const autoDismissRules = rules.filter(r => r.autoDismissOnTaskDone && r.enabled !== false);
+  if(!autoDismissRules.length) return;
+  const done = JSON.parse(JSON.stringify(STATE.done));
+  if(!done[tk]) return;
+  let changed = false;
+
+  STATE.kids.forEach(kid => {
+    const kidDone = (todayDone[kid.id]) || {};
+    const pending = done[tk]?.pendingPenalties?.[kid.id];
+    if(!pending || !pending.length) return;
+
+    const toRemove = [];
+    pending.forEach((p, i) => {
+      if(!p.auto || !p.conditionTaskId) return;
+      // If the condition task is now done, auto-dismiss this warning
+      if((kidDone[p.conditionTaskId] || 0) > 0) {
+        toRemove.push(i);
+        // Suppress so the rule doesn't re-add it
+        if(!done[tk].suppressedAutoWarnings) done[tk].suppressedAutoWarnings = {};
+        if(!done[tk].suppressedAutoWarnings[kid.id]) done[tk].suppressedAutoWarnings[kid.id] = [];
+        if(!done[tk].suppressedAutoWarnings[kid.id].includes(p.reason))
+          done[tk].suppressedAutoWarnings[kid.id].push(p.reason);
+      }
+    });
+    if(toRemove.length) {
+      done[tk].pendingPenalties[kid.id] = pending.filter((_, i) => !toRemove.includes(i));
+      changed = true;
+    }
+  });
+  if(changed) await saveDone(done);
 }
 
 // Silently fetch prayer times for the reminder system (no UI shown)
@@ -2387,13 +2443,16 @@ function checkTimeBasedReminders() {
           const warnMins   = rBrushBf.warnMins   || 60;
           const pts        = rBrushBf.pts         || 5;
           const warnReason = `Did not brush teeth within ${warnMins} min after breakfast`;
-          if(minsSince >= remindMins && !_reminderFlags.has(kid.id+'-brush-remind')) {
+          if(rBrushBf.remindEnabled !== false && minsSince >= remindMins && !_reminderFlags.has(kid.id+'-brush-remind')) {
             _persistFlag(kid.id+'-brush-remind');
             _speakReminder(`${first}! You had breakfast more than ${remindMins} minutes ago. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-brush-warn')) {
+          if(rBrushBf.warnEnabled !== false && minsSince >= warnMins && !_reminderFlags.has(kid.id+'-brush-warn')) {
             _persistFlag(kid.id+'-brush-warn');
-            _addAutoPenaltyWarning(kid.id, pts, warnReason);
+            _addAutoPenaltyWarning(kid.id, pts, warnReason, {
+              requireApproval: rBrushBf.requireParentApproval !== false,
+              conditionTaskId: btTask?.id || ''
+            });
             // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
           }
         }
@@ -2417,13 +2476,16 @@ function checkTimeBasedReminders() {
           const warnMins   = rBrushDin.warnMins   || 60;
           const pts        = rBrushDin.pts         || 7;
           const warnReason = `Did not brush teeth within ${warnMins} min after dinner`;
-          if(minsSince >= remindMins && !_reminderFlags.has(kid.id+'-btd-remind')) {
+          if(rBrushDin.remindEnabled !== false && minsSince >= remindMins && !_reminderFlags.has(kid.id+'-btd-remind')) {
             _persistFlag(kid.id+'-btd-remind');
             _speakReminder(`${first}! It's been more than ${remindMins} minutes since dinner. Don't forget to brush your teeth!`);
           }
-          if(minsSince >= warnMins && !_reminderFlags.has(kid.id+'-btd-warn')) {
+          if(rBrushDin.warnEnabled !== false && minsSince >= warnMins && !_reminderFlags.has(kid.id+'-btd-warn')) {
             _persistFlag(kid.id+'-btd-warn');
-            _addAutoPenaltyWarning(kid.id, pts, warnReason);
+            _addAutoPenaltyWarning(kid.id, pts, warnReason, {
+              requireApproval: rBrushDin.requireParentApproval !== false,
+              conditionTaskId: btdTask?.id || ''
+            });
             // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
           }
         }
@@ -2443,15 +2505,19 @@ function checkTimeBasedReminders() {
         const minsAfter = totalMinsNow - pm; // positive when prayer time has already passed
         const flagKey   = kid.id+'-post'+map+'-'+key;
         const warnReason = `Did not pray ${label} — ${map} minutes have passed since ${label} prayer time`;
-        if(minsAfter >= map-half && minsAfter <= map+half && !_reminderFlags.has(flagKey)) {
+        if(rPrayer.warnEnabled !== false && minsAfter >= map-half && minsAfter <= map+half && !_reminderFlags.has(flagKey)) {
           _persistFlag(flagKey);
-          _addAutoPenaltyWarning(kid.id, pts, warnReason);
+          _addAutoPenaltyWarning(kid.id, pts, warnReason, {
+            requireApproval: rPrayer.requireParentApproval !== false
+          });
           // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
         }
       });
     }
   });
 
+  // ── Auto-dismiss warnings when condition task is now done ──
+  _checkAutoDismissWarnings();
   // ── Check pending announcements from parent ──
   checkPendingAnnouncements();
 
@@ -5640,7 +5706,7 @@ function renderWarningsTab() {
   const kids  = STATE.kids  || [];
   const rules = STATE.warningRules || [];
 
-  // ── Manual warning section ──
+  // ── Manual Warning Section ──
   const kidOpts = kids.map(k=>`<option value="${k.id}">${k.emoji||'⭐'} ${escHtml(k.name)}</option>`).join('');
   const manualHtml = `
     <div class="p-card" style="margin-bottom:1.2rem;border-left:3px solid #e74c3c">
@@ -5651,8 +5717,14 @@ function renderWarningsTab() {
           <select class="form-input" id="warn-kid-sel" style="width:100%">${kidOpts}</select></div>
         <div><label class="form-label">Reason for warning</label>
           <input class="form-input" id="warn-reason" placeholder="e.g. Left room messy after being asked" style="width:100%"></div>
-        <div><label class="form-label">Points deducted if confirmed as penalty</label>
-          <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:120px"></div>
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+          <div><label class="form-label">Points if confirmed</label>
+            <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:100px"></div>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;cursor:pointer;padding-bottom:0.35rem">
+            <input type="checkbox" id="warn-require-approval" checked style="width:15px;height:15px;cursor:pointer">
+            Send to parent for approval
+          </label>
+        </div>
         <button class="btn" style="background:rgba(231,76,60,0.25);border:1px solid rgba(231,76,60,0.5);color:#e74c3c;align-self:flex-start"
           onclick="issueManualWarning()">⚠️ Issue Warning</button>
       </div>`}
@@ -5662,7 +5734,7 @@ function renderWarningsTab() {
   const newRuleForm = `
     <div id="add-rule-panel" style="display:none;margin-bottom:1rem">
       <div class="p-card" style="border-left:3px solid #3498db">
-        <div style="font-weight:700;color:#3498db;margin-bottom:0.7rem">➕ New Automatic Warning Rule</div>
+        <div style="font-weight:700;color:#3498db;margin-bottom:0.7rem">➕ New Automatic Rule</div>
         <div style="display:flex;flex-direction:column;gap:0.55rem">
           <div><label class="form-label" style="font-size:0.7rem">Rule name</label>
             <input class="form-input" id="nwr-name" placeholder="e.g. Screen time reminder" style="width:100%"></div>
@@ -5672,30 +5744,63 @@ function renderWarningsTab() {
               <option value="prayer">🕌 Prayer time — minutes after prayer starts</option>
             </select>
           </div>
-          <div id="nwr-brush-fields">
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:0.4rem">
-              <div style="flex:1;min-width:160px">
-                <label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
-                ${_wrTaskSelectHtml('nwr-trigger','','')}
-              </div>
-              <div style="flex:1;min-width:160px">
-                <label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
-                ${_wrTaskSelectHtml('nwr-condition','','')}
-              </div>
+          <!-- Reminder sub-section -->
+          <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.2);border-radius:8px;padding:0.55rem 0.7rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+              <span style="font-size:0.8rem;font-weight:700;color:#3498db">📣 Reminder</span>
+              <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
+                <input type="checkbox" id="nwr-remindEnabled" checked style="width:14px;height:14px;cursor:pointer"> Enabled
+              </label>
             </div>
-            <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-              <div><label class="form-label" style="font-size:0.7rem">Verbal reminder (min)</label>
+            <div id="nwr-brush-remind-fields">
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                <div style="flex:1;min-width:160px"><label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
+                  ${_wrTaskSelectHtml('nwr-trigger','','')}</div>
+              </div>
+              <div style="margin-top:0.4rem"><label class="form-label" style="font-size:0.7rem">Speak reminder after (min)</label>
                 <input class="form-input" type="number" min="1" id="nwr-remindMins" value="30" style="width:80px"></div>
-              <div><label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
-                <input class="form-input" type="number" min="1" id="nwr-warnMins" value="60" style="width:80px"></div>
+            </div>
+            <div id="nwr-prayer-remind-fields" style="display:none;font-size:0.75rem;opacity:0.55">No verbal reminder for prayer rules.</div>
+          </div>
+          <!-- Warning sub-section -->
+          <div style="background:rgba(255,165,0,0.07);border:1px solid rgba(255,165,0,0.2);border-radius:8px;padding:0.55rem 0.7rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+              <span style="font-size:0.8rem;font-weight:700;color:#FFA500">⚠️ Warning</span>
+              <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
+                <input type="checkbox" id="nwr-warnEnabled" checked style="width:14px;height:14px;cursor:pointer"> Enabled
+              </label>
+            </div>
+            <div id="nwr-brush-warn-fields">
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
+                <div style="flex:1;min-width:160px"><label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
+                  ${_wrTaskSelectHtml('nwr-condition','','')}</div>
+                <div><label class="form-label" style="font-size:0.7rem">Show warning after (min)</label>
+                  <input class="form-input" type="number" min="1" id="nwr-warnMins" value="60" style="width:80px"></div>
+              </div>
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;margin-top:0.4rem">
+                <input type="checkbox" id="nwr-autoDismiss" checked style="width:14px;height:14px;cursor:pointer">
+                Auto-dismiss warning if task is completed after warning
+              </label>
+            </div>
+            <div id="nwr-prayer-warn-fields" style="display:none">
+              <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
+                <input class="form-input" type="number" min="1" id="nwr-minsAfterPrayer" value="40" style="width:80px"></div>
             </div>
           </div>
-          <div id="nwr-prayer-fields" style="display:none">
-            <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
-              <input class="form-input" type="number" min="1" id="nwr-minsAfterPrayer" value="40" style="width:80px"></div>
+          <!-- Penalty sub-section -->
+          <div style="background:rgba(231,76,60,0.07);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:0.55rem 0.7rem">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+              <span style="font-size:0.8rem;font-weight:700;color:#e74c3c">🔴 Penalty</span>
+            </div>
+            <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+              <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
+                <input class="form-input" type="number" min="0" id="nwr-pts" value="5" style="width:80px"></div>
+              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;padding-bottom:0.35rem">
+                <input type="checkbox" id="nwr-requireApproval" checked style="width:14px;height:14px;cursor:pointer">
+                Require parent approval before deducting
+              </label>
+            </div>
           </div>
-          <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
-            <input class="form-input" type="number" min="1" id="nwr-pts" value="5" style="width:80px"></div>
           <div><label class="form-label" style="font-size:0.7rem">Formula description (optional)</label>
             <textarea class="form-input" id="nwr-formula" rows="2" placeholder="Describe what this rule does…"
               style="width:100%;font-size:0.78rem;resize:vertical"></textarea></div>
@@ -5712,69 +5817,92 @@ function renderWarningsTab() {
     const enabled   = rule.enabled !== false;
     const isBrush   = rule.type === 'brush';
     const isPrayer  = rule.type === 'prayer';
-    const fmtFormula = (rule.formula||'').replace(/\{(\w+)\}/g,
-      (_, k) => `<span style="color:#ffd700;font-weight:700">${rule[k]??k}</span>`);
+    const remindEnabled  = rule.remindEnabled  !== false;
+    const warnEnabled    = rule.warnEnabled    !== false;
+    const autoDismiss    = !!rule.autoDismissOnTaskDone;
+    const reqApproval    = rule.requireParentApproval !== false;
 
-    const paramFields = isBrush ? `
-      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.5rem">
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-          <div style="flex:1;min-width:160px">
-            <label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
-            ${_wrTaskSelectHtml('wr-trigger-'+idx, rule.triggerTaskId||'', rule.triggerTaskName||'')}
-          </div>
-          <div style="flex:1;min-width:160px">
-            <label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
-            ${_wrTaskSelectHtml('wr-condition-'+idx, rule.conditionTaskId||'', rule.conditionTaskName||'')}
-          </div>
+    const reminderSection = isBrush ? `
+      <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+          <span style="font-size:0.8rem;font-weight:700;color:#3498db">📣 Reminder</span>
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
+            <input type="checkbox" id="wr-remindEnabled-${idx}" ${remindEnabled?'checked':''} style="width:14px;height:14px;cursor:pointer"> Enabled
+          </label>
         </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end">
-          <div><label class="form-label" style="font-size:0.7rem">Verbal reminder (min)</label>
-            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:80px"></div>
-          <div><label class="form-label" style="font-size:0.7rem">Warning added after (min)</label>
-            <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:80px"></div>
-          <div><label class="form-label" style="font-size:0.7rem">Points</label>
-            <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px"></div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
+          <div style="flex:1;min-width:150px"><label class="form-label" style="font-size:0.7rem">Trigger task</label>
+            ${_wrTaskSelectHtml('wr-trigger-'+idx, rule.triggerTaskId||'', rule.triggerTaskName||'')}</div>
+          <div><label class="form-label" style="font-size:0.7rem">Speak at (min)</label>
+            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:75px"></div>
         </div>
-      </div>`
-    : isPrayer ? `
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-top:0.5rem">
-        <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
-          <input class="form-input" type="number" min="1" id="wr-minsAfterPrayer-${idx}" value="${rule.minsAfterPrayer||rule.minsBeforePrayer||40}" style="width:80px"></div>
-        <div><label class="form-label" style="font-size:0.7rem">Points</label>
-          <input class="form-input" type="number" min="1" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:70px"></div>
       </div>` : '';
 
+    const warningSection = `
+      <div style="background:rgba(255,165,0,0.07);border:1px solid rgba(255,165,0,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
+          <span style="font-size:0.8rem;font-weight:700;color:#FFA500">⚠️ Warning</span>
+          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
+            <input type="checkbox" id="wr-warnEnabled-${idx}" ${warnEnabled?'checked':''} style="width:14px;height:14px;cursor:pointer"> Enabled
+          </label>
+        </div>
+        ${isBrush ? `
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
+            <div style="flex:1;min-width:150px"><label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
+              ${_wrTaskSelectHtml('wr-condition-'+idx, rule.conditionTaskId||'', rule.conditionTaskName||'')}</div>
+            <div><label class="form-label" style="font-size:0.7rem">Show warning after (min)</label>
+              <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:75px"></div>
+          </div>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;margin-top:0.4rem">
+            <input type="checkbox" id="wr-autoDismiss-${idx}" ${autoDismiss?'checked':''} style="width:14px;height:14px;cursor:pointer">
+            Auto-dismiss if task is completed after warning
+          </label>` : `
+          <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
+            <input class="form-input" type="number" min="1" id="wr-minsAfterPrayer-${idx}" value="${rule.minsAfterPrayer||rule.minsBeforePrayer||40}" style="width:80px"></div>`}
+      </div>`;
+
+    const penaltySection = `
+      <div style="background:rgba(231,76,60,0.07);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
+        <div style="font-size:0.8rem;font-weight:700;color:#e74c3c;margin-bottom:0.4rem">🔴 Penalty</div>
+        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
+          <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
+            <input class="form-input" type="number" min="0" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:75px"></div>
+          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;padding-bottom:0.35rem">
+            <input type="checkbox" id="wr-requireApproval-${idx}" ${reqApproval?'checked':''} style="width:14px;height:14px;cursor:pointer">
+            Require parent approval before deducting
+          </label>
+        </div>
+      </div>`;
+
     return `<div class="p-card" style="margin-bottom:0.9rem;border-left:3px solid ${enabled?'#FFA500':'rgba(255,255,255,0.15)'}">
-      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.5rem">
-        <span style="font-size:1.2rem">${enabled?'⚠️':'💤'}</span>
-        <span style="font-weight:700;font-size:0.95rem;flex:1">${escHtml(rule.name)}</span>
-        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer">
-          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer"> Enabled
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.65rem">
+        <span style="font-size:1.1rem">${enabled?'⚙️':'💤'}</span>
+        <input class="form-input" id="wr-name-${idx}" value="${escHtml(rule.name)}"
+          style="font-weight:700;font-size:0.9rem;flex:1;background:transparent;border-color:rgba(255,255,255,0.12)">
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer"> On
         </label>
       </div>
-      <div style="margin-bottom:0.5rem">
-        <label class="form-label" style="font-size:0.7rem">Rule name</label>
-        <input class="form-input" id="wr-name-${idx}" value="${escHtml(rule.name)}" style="width:100%">
-      </div>
-      ${paramFields}
-      <div style="margin-top:0.6rem">
-        <label class="form-label" style="font-size:0.7rem">Formula description</label>
+      ${reminderSection}
+      ${warningSection}
+      ${penaltySection}
+      <div style="margin-bottom:0.55rem">
+        <label class="form-label" style="font-size:0.7rem">Formula / notes</label>
         <textarea class="form-input" id="wr-formula-${idx}" rows="2"
           style="width:100%;font-size:0.78rem;resize:vertical">${escHtml(rule.formula||'')}</textarea>
       </div>
-      ${rule.formula ? `<div style="font-size:0.71rem;opacity:0.45;margin-top:0.35rem;line-height:1.5">Preview: ${fmtFormula}</div>` : ''}
-      <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
         <button class="btn btn-approve btn-sm" onclick="saveWarningRule(${idx})">💾 Save</button>
         <button class="btn btn-sm" style="background:rgba(231,76,60,0.18);border:1px solid rgba(231,76,60,0.4);color:#e74c3c"
           onclick="deleteWarningRule(${idx})">🗑 Delete</button>
       </div>
     </div>`;
   }).join('')
-  : '<div style="opacity:0.45;font-size:0.85rem;padding:0.5rem 0">No automatic rules yet. Add one above.</div>';
+  : '<div style="opacity:0.45;font-size:0.85rem;padding:0.5rem 0">No automatic rules yet.</div>';
 
   el.innerHTML = manualHtml
     + `<div style="display:flex;align-items:center;gap:0.7rem;margin:1.2rem 0 0.7rem">
-        <span style="font-weight:800;font-size:1rem;color:#FFA500">🤖 Automatic Warning Rules</span>
+        <span style="font-weight:800;font-size:1rem;color:#FFA500">🤖 Automatic Rules</span>
         <button class="btn btn-sm" style="background:rgba(52,152,219,0.2);border:1px solid rgba(52,152,219,0.4);color:#3498db"
           onclick="document.getElementById('add-rule-panel').style.display=''">➕ Add Rule</button>
        </div>`
@@ -5784,10 +5912,12 @@ function renderWarningsTab() {
 
 function handleNwrType() {
   const type = document.getElementById('nwr-type')?.value;
-  const bf = document.getElementById('nwr-brush-fields');
-  const pf = document.getElementById('nwr-prayer-fields');
-  if(bf) bf.style.display = type === 'brush'  ? '' : 'none';
-  if(pf) pf.style.display = type === 'prayer' ? '' : 'none';
+  const isBrush = type === 'brush';
+  const show = (id, vis) => { const e=document.getElementById(id); if(e) e.style.display=vis?'':'none'; };
+  show('nwr-brush-remind-fields',  isBrush);
+  show('nwr-prayer-remind-fields', !isBrush);
+  show('nwr-brush-warn-fields',    isBrush);
+  show('nwr-prayer-warn-fields',   !isBrush);
 }
 
 async function addWarningRule() {
@@ -5800,6 +5930,10 @@ async function addWarningRule() {
   const rule = {
     id: 'custom-' + Date.now(),
     name, type, enabled: true, pts, formula,
+    remindEnabled:        !!document.getElementById('nwr-remindEnabled')?.checked,
+    warnEnabled:          !!document.getElementById('nwr-warnEnabled')?.checked,
+    autoDismissOnTaskDone:!!document.getElementById('nwr-autoDismiss')?.checked,
+    requireParentApproval:!!document.getElementById('nwr-requireApproval')?.checked,
   };
   if(type === 'brush') {
     const trig = _readWrTask('nwr-trigger');
@@ -5835,9 +5969,10 @@ async function issueManualWarning() {
   const sel    = document.getElementById('warn-kid-sel');
   const reason = (document.getElementById('warn-reason')?.value||'').trim();
   const pts    = parseInt(document.getElementById('warn-pts')?.value||'0');
+  const reqApproval = document.getElementById('warn-require-approval')?.checked !== false;
   if(!sel || !reason) { toast('Enter a reason for the warning'); return; }
   if(!pts || pts < 1) { toast('Enter points to deduct'); return; }
-  await _addAutoPenaltyWarning(sel.value, pts, reason);
+  await _addAutoPenaltyWarning(sel.value, pts, reason, { requireApproval: reqApproval });
   document.getElementById('warn-reason').value = '';
   document.getElementById('warn-pts').value    = '';
   toast('⚠️ Warning issued — pending confirmation');
@@ -5848,10 +5983,14 @@ async function saveWarningRule(idx) {
   const rules = JSON.parse(JSON.stringify(STATE.warningRules||[]));
   const rule  = rules[idx];
   if(!rule) return;
-  rule.enabled = !!document.getElementById(`wr-enabled-${idx}`)?.checked;
-  rule.name    = document.getElementById(`wr-name-${idx}`)?.value?.trim() || rule.name;
-  rule.formula = document.getElementById(`wr-formula-${idx}`)?.value?.trim() ?? rule.formula;
-  rule.pts     = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
+  rule.enabled              = !!document.getElementById(`wr-enabled-${idx}`)?.checked;
+  rule.name                 = document.getElementById(`wr-name-${idx}`)?.value?.trim() || rule.name;
+  rule.formula              = document.getElementById(`wr-formula-${idx}`)?.value?.trim() ?? rule.formula;
+  rule.pts                  = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
+  rule.remindEnabled        = !!document.getElementById(`wr-remindEnabled-${idx}`)?.checked;
+  rule.warnEnabled          = !!document.getElementById(`wr-warnEnabled-${idx}`)?.checked;
+  rule.autoDismissOnTaskDone= !!document.getElementById(`wr-autoDismiss-${idx}`)?.checked;
+  rule.requireParentApproval= !!document.getElementById(`wr-requireApproval-${idx}`)?.checked;
   if(rule.type === 'brush') {
     rule.remindMins = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value) || rule.remindMins;
     rule.warnMins   = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)   || rule.warnMins;
