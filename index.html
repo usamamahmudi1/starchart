@@ -4823,19 +4823,35 @@ function triggerCelebration(level, kidName) {
   banner.classList.add('show');
   setTimeout(()=>banner.classList.remove('show'), 3500);
 
-  // Voice announcement — enthusiastic, uses kid's first name
+  // Voice announcement — warm and varied, uses kid's first name
   try {
     const firstName = (kidName||'').split(' ')[0] || 'Champion';
+    const n = level.label;
     const phrases = [
-      `Woooohooo! ${firstName}! You just leveled up to ${level.label}! That is absolutely incredible! You are on FIRE!`,
-      `OH YEAH! ${firstName} reached ${level.label}! Amazing, amazing, AMAZING! Keep going superstar!`,
-      `YES YES YES! ${firstName}, you did it! Level ${level.label} is yours! The crowd goes WILD!`,
+      `Wow, ${firstName}! You just reached ${n}! That is seriously impressive. Keep it up!`,
+      `${firstName}, you made it to ${n}! All that hard work is really paying off. So proud of you!`,
+      `Look at you, ${firstName}! You hit ${n}! That did not happen by accident — you earned every single point.`,
+      `${firstName}! New level unlocked — ${n}! You are getting better every single day.`,
+      `No way! ${firstName} just levelled up to ${n}! That is huge. Genuinely well done.`,
+      `${firstName}, you reached ${n}! Honestly, that is brilliant. You should feel really good about this.`,
+      `Oh my goodness, ${firstName}! You are now at ${n}! The effort you put in is really showing.`,
+      `${firstName} is on a roll! You just hit ${n}! This is what happens when you show up every day.`,
+      `Incredible, ${firstName}! Level ${n} is yours now. That took real dedication and you did it.`,
+      `${firstName}, you just went up to ${n}! Every task you do is building something great. Well done!`,
+      `Yes! ${firstName} reached ${n}! You are proving something to yourself right now. Keep going.`,
+      `${firstName}, that is a new level — ${n}! Seriously amazing work. I cannot wait to see what comes next.`,
+      `Look how far you have come, ${firstName}! You are at ${n} now. That is real progress.`,
+      `${firstName}! You levelled up to ${n}! Every single effort added up and here you are. Beautiful.`,
+      `Brilliant, ${firstName}! You hit ${n}! This is exactly what happens when you stay consistent.`,
+      `${firstName}, you are now at ${n}! You worked for this and you got it. That means something.`,
+      `Oh yes! ${firstName} just unlocked ${n}! You are absolutely on the right track.`,
+      `${firstName}, welcome to ${n}! You did not give up and it really shows. Fantastic job!`,
     ];
     const text = phrases[Math.floor(Math.random()*phrases.length)];
     speechSynthesis.cancel();
     const speakLevelUp = (voices) => {
       const msg = new SpeechSynthesisUtterance(text);
-      msg.rate = 1.15; msg.pitch = 1.4; msg.volume = 1;
+      msg.rate = 1.05; msg.pitch = 1.1; msg.volume = 1;
       const pick = voices.find(v=>/Google US English|Samantha|Karen|Victoria|Zira/i.test(v.name))
                 || voices.find(v=>/en/i.test(v.lang)) || voices[0];
       if(pick) msg.voice = pick;
