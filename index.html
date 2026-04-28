@@ -2162,7 +2162,7 @@ function _touchParentSession() { if(_hasValidParentSession()) _saveParentSession
 
 function doLogin() {
   const pw = document.getElementById('login-pw').value;
-  if(pw === STATE.pw) { _saveParentSession(); showView('parent'); }
+  if(pw === STATE.pw) { _saveParentSession(); showView('parent'); setTimeout(_updateChatUnread, 50); }
   else { document.getElementById('login-err').textContent='Wrong password. Try again.'; document.getElementById('login-pw').value=''; document.getElementById('login-pw').focus(); }
 }
 function logout() { _clearParentSession(); showView('kids'); }
