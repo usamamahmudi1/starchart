@@ -2289,7 +2289,7 @@ function _speakCountNumber(n) {
 
 function _speakTimerDone(taskName) {
   try {
-    const text = 'Time's up for ' + taskName + '!';
+    const text = "Time's up for " + taskName + '!';
     const utt  = new SpeechSynthesisUtterance(text);
     utt.rate = 0.9; utt.pitch = 1.0; utt.volume = 1;
     const v = speechSynthesis.getVoices();
@@ -5502,7 +5502,7 @@ function renderTimersTab() {
       var clr = running ? '#3498db' : 'rgba(255,255,255,0.4)';
       var startBtnHtml = running ? '' : '<button class="btn btn-approve btn-sm" onclick="startTimer(\''+t.id+'\')">&#9654; Start</button>';
       timerRows += '<div style="display:flex;align-items:center;gap:0.65rem;padding:0.7rem 0.9rem;background:rgba(255,255,255,0.05);border-radius:12px;margin-bottom:0.5rem;border:1px solid rgba(255,255,255,0.1);flex-wrap:wrap">'
-        +'<span style="font-size:1.3rem;flex-shrink:0">'+( running?'&#9654;':\'&#9208;')+'</span>'
+        +'<span style="font-size:1.3rem;flex-shrink:0">'+( running?'&#9654;':'&#9208;')+'</span>'
         +'<div style="flex:1;min-width:120px">'
           +'<div style="font-weight:700;font-size:0.95rem">'+escHtml(t.taskName)+'</div>'
           +'<div style="font-size:0.72rem;opacity:0.5;margin-top:2px">'+kidLabel+'</div>'
