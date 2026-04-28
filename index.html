@@ -1513,7 +1513,7 @@
 
 <!-- Global floating buttons (prayer + chat) — visible on kids AND parent views -->
 <button class="prayer-btn" id="prayer-btn" onclick="openPrayerTimes()" title="Prayer Times" style="display:none">🕌</button>
-<button class="chat-btn"   id="chat-btn"   onclick="openChat()"        title="Family Chat"  style="display:none;position:relative">💬<span class="chat-unread-badge" id="chat-unread-badge" style="display:none"></span></button>
+<button class="chat-btn"   id="chat-btn"   onclick="openChat()"        title="Family Chat"  style="display:none">💬<span class="chat-unread-badge" id="chat-unread-badge" style="display:none"></span></button>
 
 <!-- CHAT OVERLAY -->
 <div class="chat-overlay" id="chat-overlay" onclick="if(event.target===this)closeChat()">
@@ -2121,14 +2121,22 @@ function showView(v) {
   if(pBtn) {
     pBtn.style.display = showBtns ? 'flex' : 'none';
     // On parent view the sticky header has the logout btn at top-right,
-    // so push the mosque icon below it to avoid overlap
+    // so push both icons below the header to avoid overlap
     if(v === 'parent') {
-      pBtn.style.top = '4.5rem';
+      pBtn.style.top = '5.5rem';
     } else {
       pBtn.style.top = '1rem';
     }
   }
-  if(cBtn) cBtn.style.display = showBtns ? 'flex' : 'none';
+  if(cBtn) {
+    cBtn.style.display = showBtns ? 'flex' : 'none';
+    // Chat sits directly below mosque; shift it with mosque on parent view
+    if(v === 'parent') {
+      cBtn.style.top = '9.1rem';
+    } else {
+      cBtn.style.top = '4.6rem';
+    }
+  }
   // Only render if init has completed — listeners handle rendering during init
   if(!STATE._ready) return;
   if(v==='kids')   { renderKidsView(); startClock(); }
