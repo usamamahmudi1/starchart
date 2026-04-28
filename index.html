@@ -496,6 +496,17 @@
   .chat-btn:hover { transform: scale(1.1); box-shadow: 0 0 26px rgba(52,152,219,0.45); }
   .chat-btn.has-unread { border-color: var(--gold); box-shadow: 0 0 18px rgba(255,215,0,0.4); animation: pulse-chat 1.8s ease-in-out infinite; }
   @keyframes pulse-chat { 0%,100%{box-shadow:0 0 14px rgba(255,215,0,0.3)} 50%{box-shadow:0 0 28px rgba(255,215,0,0.6)} }
+  .chat-unread-badge { position:absolute; top:-5px; right:-5px; min-width:18px; height:18px; background:#e74c3c; color:#fff; border-radius:999px; font-size:0.65rem; font-weight:800; font-family:'Nunito',sans-serif; display:flex; align-items:center; justify-content:center; padding:0 4px; border:2px solid #1a1a2e; pointer-events:none; }
+  .chat-msg-actions { display:none; gap:0.3rem; margin-top:0.25rem; }
+  .chat-bubble-wrap:hover .chat-msg-actions { display:flex; }
+  .chat-msg-act-btn { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); color:rgba(255,255,255,0.7); border-radius:6px; padding:0.1rem 0.45rem; font-size:0.7rem; cursor:pointer; transition:all 0.15s; }
+  .chat-msg-act-btn:hover { background:rgba(255,255,255,0.18); color:#fff; }
+  .chat-msg-act-btn.del { border-color:rgba(231,76,60,0.4); }
+  .chat-msg-act-btn.del:hover { background:rgba(231,76,60,0.25); color:#ff6b6b; }
+  .chat-edit-wrap { display:flex; gap:0.4rem; margin-top:0.3rem; align-items:center; }
+  .chat-edit-input { flex:1; background:rgba(255,255,255,0.1); border:1.5px solid rgba(52,152,219,0.5); border-radius:8px; color:#fff; padding:0.3rem 0.6rem; font-size:0.88rem; font-family:'Nunito',sans-serif; outline:none; }
+  .chat-clear-btn { background:rgba(231,76,60,0.15); border:1px solid rgba(231,76,60,0.35); color:rgba(255,255,255,0.7); border-radius:8px; padding:0.25rem 0.7rem; font-size:0.75rem; cursor:pointer; transition:all 0.15s; }
+  .chat-clear-btn:hover { background:rgba(231,76,60,0.3); color:#fff; }
 
   /* Chat overlay */
   .chat-overlay {
@@ -1475,6 +1486,15 @@
 
   /* ── Kid mark card — task pts reduction hint ── */
   .reduce-hint { font-size:0.7rem; opacity:0.45; margin-left:4px; }
+  .kid-timer-wrap { margin:0.5rem 0 0; padding:0.65rem 0.85rem; background:rgba(52,152,219,0.1); border:1.5px solid rgba(52,152,219,0.35); border-radius:12px; display:flex; align-items:center; gap:0.6rem; transition:background 0.3s, border-color 0.3s; }
+  .kid-timer-wrap.urgent { background:rgba(231,76,60,0.15); border-color:rgba(231,76,60,0.7); animation:timer-pulse 0.75s ease-in-out infinite; }
+  @keyframes timer-pulse { 0%,100%{box-shadow:0 0 0 0 rgba(231,76,60,0.3)} 50%{box-shadow:0 0 0 6px rgba(231,76,60,0)} }
+  .kid-timer-body { flex:1; min-width:0; }
+  .kid-timer-task { font-size:0.82rem; font-weight:700; opacity:0.85; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .kid-timer-count { font-family:'Fredoka One',cursive; font-size:2rem; line-height:1.05; }
+  .kid-timer-count.urgent { color:#ff4444; }
+  .kid-timer-count.normal { color:#3498db; }
+  .kid-timer-count.waiting { color:rgba(255,255,255,0.45); font-size:0.9rem; font-family:'Nunito',sans-serif; }
 </style>
 </head>
 <body>
@@ -1493,13 +1513,14 @@
 
 <!-- Global floating buttons (prayer + chat) — visible on kids AND parent views -->
 <button class="prayer-btn" id="prayer-btn" onclick="openPrayerTimes()" title="Prayer Times" style="display:none">🕌</button>
-<button class="chat-btn"   id="chat-btn"   onclick="openChat()"        title="Family Chat"  style="display:none">💬</button>
+<button class="chat-btn"   id="chat-btn"   onclick="openChat()"        title="Family Chat"  style="display:none;position:relative">💬<span class="chat-unread-badge" id="chat-unread-badge" style="display:none"></span></button>
 
 <!-- CHAT OVERLAY -->
 <div class="chat-overlay" id="chat-overlay" onclick="if(event.target===this)closeChat()">
   <div class="chat-modal">
     <div class="chat-header">
       <div class="chat-title">💬 Family Chat</div>
+      <button class="chat-clear-btn" id="chat-clear-btn" onclick="clearChat()" style="display:none">🗑 Clear all</button>
       <button class="chat-close" onclick="closeChat()">✕</button>
     </div>
     <div class="chat-kid-bar" id="chat-kid-bar"></div>
@@ -1589,7 +1610,7 @@
         <button class="tab-btn" onclick="switchTab('money',this)">💰 Money</button>
         <button class="tab-btn" onclick="switchTab('log',this)">🕐 Log</button>
         <button class="tab-btn" onclick="switchTab('announce',this)">📢 Announce</button>
-        <button class="tab-btn" onclick="switchTab('warnings',this)">⚙️ More</button>
+        <button class="tab-btn" onclick="switchTab('timers',this)">⏱ Timers</button>
       </div>
     </div>
     <div class="parent-content">
@@ -1803,11 +1824,12 @@
         <div id="announce-content"></div>
       </div>
 
-      <!-- WARNINGS TAB -->
-      <div id="tab-warnings" style="display:none">
-        <div class="section-title">⚙️ More</div>
-        <div id="warnings-content"></div>
+      <!-- TIMERS TAB -->
+      <div id="tab-timers" style="display:none">
+        <div class="section-title">⏱ Task Timers</div>
+        <div id="timers-content"></div>
       </div>
+
 
     </div>
   </div>
@@ -1853,21 +1875,8 @@ const COLORS = {
 };
 
 // ============ IN-MEMORY STATE (synced from Firebase) ============
-const DEFAULT_WARNING_RULES = [
-  { id:'brush-breakfast', name:'Brush Teeth after Breakfast',        enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:5,
-    triggerTaskId:'', conditionTaskId:'',
-    remindEnabled:true, warnEnabled:true, autoDismissOnTaskDone:true, requireParentApproval:true,
-    formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
-  { id:'brush-dinner',    name:'Brush Teeth after Dinner',           enabled:true, type:'brush',  remindMins:30, warnMins:60, pts:7,
-    triggerTaskId:'', conditionTaskId:'',
-    remindEnabled:true, warnEnabled:true, autoDismissOnTaskDone:true, requireParentApproval:true,
-    formula:'After the trigger task is done, give a verbal reminder at {remindMins} min. If the condition task is still not done at {warnMins} min, add a {pts}-point warning.' },
-  { id:'prayer-pre',      name:'Missed Prayer Warning (Dhuhr/Asr/Maghrib/Isha)', enabled:true, type:'prayer', minsAfterPrayer:40, pts:5,
-    remindEnabled:false, warnEnabled:true, autoDismissOnTaskDone:false, requireParentApproval:true,
-    formula:'If {minsAfterPrayer} minutes have passed since a prayer time (Dhuhr, Asr, Maghrib or Isha) and the prayer has not been done, add a {pts}-point warning.' },
-];
 
-let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[], warningRules:[] };
+let STATE = { kids:[], tasks:[], done:{}, pw: DEFAULT_PW, levels: DEFAULT_EMOJI_LEVELS, pending:{}, spending:{}, bonuses:{}, taskLog:[], announcements:[], chat:[], timers:[] };
 let unsubscribers = [];
 
 // ============ FIREBASE HELPERS ============
@@ -1914,7 +1923,7 @@ function scheduleRender(docId) {
       if(tabName.includes('Money'))    renderMoneyTab();
       if(tabName.includes('Log'))      renderLogTab();
       if(tabName.includes('Announce')) renderAnnounceTab();
-      if(tabName.includes('More'))     renderWarningsTab();
+      if(tabName.includes('Timers'))   renderTimersTab();
     }
     // Refresh chat messages if chat overlay is open
     if(document.getElementById('chat-overlay').classList.contains('open')) renderChatMessages();
@@ -1929,10 +1938,6 @@ function updatePendingBadge() {
   Object.values(pending).forEach(taskIds => {
     Object.entries(taskIds).forEach(([k,c]) => { if(k!=='_ts' && typeof c==='number') total += c; });
   });
-  // Count pending penalties
-  const tk = todayKey();
-  const pp = (STATE.done[tk]||{}).pendingPenalties||{};
-  Object.values(pp).forEach(arr => { total += arr.length; });
   // Badge on Approvals tab button
   const btn = document.getElementById('tab-btn-approvals');
   if(!btn) return;
@@ -1959,35 +1964,12 @@ function renderApprovalsTab() {
   const tk = todayKey();
   const todayDone = STATE.done[tk]||{};
 
-  // ── Pending penalty warnings section ──
-  const penaltyCards = kids.map(kid => {
-    const pp = ((todayDone.pendingPenalties||{})[kid.id]||[]);
-    if(!pp.length) return '';
-    const col = COLORS[kid.color]||COLORS.pink;
-    return `<div class="approval-card" style="border:1.5px solid rgba(255,60,60,0.4);background:rgba(255,30,30,0.05)">
-      <div class="approval-card-header">
-        <div class="approval-kid-avatar" style="background:linear-gradient(135deg,${col.grad})">${kid.emoji||'⭐'}</div>
-        <div>
-          <div class="approval-kid-name" style="color:#ff4444">${escHtml(kid.name)}</div>
-          <div style="font-size:0.8rem;opacity:0.6">⚠️ Pending warning — confirm or cancel</div>
-        </div>
-      </div>
-      ${pp.map((p,i)=>`<div class="approval-task-row" style="border:1px solid rgba(255,60,60,0.25);background:rgba(255,30,30,0.06)">
-        <div style="flex:1">
-          <div class="approval-task-name" style="color:#ff6666">−${p.pts} pts</div>
-          <div style="font-size:0.75rem;opacity:0.6;margin-top:2px">${escHtml(p.reason||'Point deduction')}</div>
-        </div>
-        <button class="btn btn-approve btn-sm" onclick="confirmPenalty('${kid.id}',${i})">✓ Confirm</button>
-        <button class="btn btn-reject btn-sm" onclick="dismissPenalty('${kid.id}',${i})">✗ Cancel</button>
-      </div>`).join('')}
-    </div>`;
-  }).filter(Boolean).join('');
 
   const pending = STATE.pending || {};
   const entries = Object.entries(pending).filter(([kidId, taskIds]) =>
     Object.values(taskIds).some(c=>c>0)
   );
-  if(!entries.length && !penaltyCards.length) {
+  if(!entries.length) {
     el.innerHTML = '<div class="approvals-empty">🎉 No pending suggestions<br><span style="font-size:0.85rem">When a child taps "I did something!", it will appear here for you to approve.</span></div>';
     return;
   }
@@ -2057,7 +2039,7 @@ function startListeners() {
   unsubscribers.forEach(u=>u());
   unsubscribers = [];
 
-  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements','chat','warningrules'];
+  const docs = ['kids','tasks','done','settings','pending','spending','bonuses','tasklog','announcements','chat','timers'];
   docs.forEach(docId => {
     let isFirstSnapshot = true; // skip the immediate echo of data we already loaded
     const unsub = onSnapshot(doc(db,'starchart',docId), (snap) => {
@@ -2077,7 +2059,7 @@ function startListeners() {
       if(docId === 'tasklog')       { STATE.taskLog      = data.entries || []; }
       if(docId === 'announcements') { STATE.announcements = data.items    || []; }
       if(docId === 'chat')          { STATE.chat          = data.messages || []; _updateChatUnread(); }
-      if(docId === 'warningrules')  { STATE.warningRules  = data._v !== undefined ? (data.rules||[]) : DEFAULT_WARNING_RULES.map(r=>({...r})); }
+      if(docId === 'timers')        { STATE.timers = data.items || []; }
       // First snapshot is just confirming what we already fetched in init — skip render
       if(isFirstSnapshot) { isFirstSnapshot = false; return; }
       scheduleRender(docId);
@@ -2108,15 +2090,15 @@ async function saveTaskLog(entries) {
   STATE.taskLog = cleaned;
   await fbSet('tasklog', { entries: cleaned });
 }
-async function saveWarningRules(rules) {
-  STATE.warningRules = rules;
-  await fbSet('warningrules', { _v: 1, rules }); // _v sentinel: doc exists but may have 0 rules
-}
 async function saveChat(messages) {
   const cutoff = Date.now() - 2*24*60*60*1000;
   const cleaned = messages.filter(m => m.ts > cutoff);
   STATE.chat = cleaned;
   await fbSet('chat', { messages: cleaned });
+}
+async function saveTimers(items) {
+  STATE.timers = items;
+  await fbSet('timers', { items });
 }
 async function addTaskLogEntry(kidId, taskName, by, status) {
   const kid = STATE.kids.find(k=>k.id===kidId);
@@ -2232,369 +2214,143 @@ function makeStars() {
   }
 }
 
-// ══════════════════════════════════════════════════════
-// TIME-BASED REMINDERS & AUTO-WARNINGS
-// ══════════════════════════════════════════════════════
+// ============ TIMER FUNCTIONS ============
+const _timerSpoken = new Set();
 
-// Track which kid+condition has already been handled this session
-const _reminderFlags = new Set();
+async function createTimer() {
+  const kidSel  = document.getElementById('timer-kid-sel');
+  const taskEl  = document.getElementById('timer-task-name');
+  const minsEl  = document.getElementById('timer-mins');
+  const secsEl  = document.getElementById('timer-secs');
+  const autoEl  = document.getElementById('timer-autostart');
+  const kidId   = kidSel?.value; if(!kidId){ toast('Select a child'); return; }
+  const taskName = taskEl?.value.trim(); if(!taskName){ toast('Enter a task name'); return; }
+  const mins  = parseInt(minsEl?.value||0);
+  const secs  = parseInt(secsEl?.value||0);
+  const totalSecs = mins*60 + secs;
+  if(totalSecs < 5){ toast('Set a duration of at least 5 seconds'); return; }
+  const autoStart = !!autoEl?.checked;
+  const timer = {
+    id: 'tmr-'+Date.now(),
+    kidId,
+    taskName,
+    durationSecs: totalSecs,
+    startedAt: autoStart ? Date.now() : null,
+    createdAt: Date.now(),
+    active: true
+  };
+  if(taskEl) taskEl.value = '';
+  if(minsEl) minsEl.value = '5';
+  if(secsEl) secsEl.value = '0';
+  if(autoEl) autoEl.checked = false;
+  const timers = [...(STATE.timers||[]), timer];
+  await saveTimers(timers);
+  toast('⏱ Timer created' + (autoStart ? ' & started' : ''));
+  renderTimersTab();
+}
 
-// Persist fired-reminder keys to localStorage so page-reload within the same window
-// doesn't re-announce or re-add warnings that already fired today.
-function _loadFiredFlagsFromStorage() {
+async function startTimer(timerId) {
+  const timers = JSON.parse(JSON.stringify(STATE.timers||[]));
+  const t = timers.find(x=>x.id===timerId);
+  if(!t) return;
+  t.startedAt = Date.now();
+  await saveTimers(timers);
+  renderTimersTab();
+}
+
+async function cancelTimer(timerId) {
+  const timers = JSON.parse(JSON.stringify(STATE.timers||[]));
+  const t = timers.find(x=>x.id===timerId);
+  if(!t) return;
+  t.active    = false;
+  t.startedAt = null;
+  _timerSpoken.delete(timerId);
+  await saveTimers(timers);
+  renderTimersTab();
+  if(document.getElementById('view-kids')?.classList.contains('active')) renderKidsView();
+}
+
+function _timerSecsLeft(t) {
+  if(!t.startedAt) return t.durationSecs;
+  return Math.max(0, t.durationSecs - Math.floor((Date.now()-t.startedAt)/1000));
+}
+
+function _speakCountNumber(n) {
   try {
-    const arr = JSON.parse(localStorage.getItem('sc_fired_' + todayKey()) || '[]');
-    arr.forEach(k => _reminderFlags.add(k));
-  } catch(e) {}
-}
-function _persistFlag(key) {
-  _reminderFlags.add(key);
-  try {
-    const fk = 'sc_fired_' + todayKey();
-    const arr = new Set(JSON.parse(localStorage.getItem(fk) || '[]'));
-    arr.add(key);
-    localStorage.setItem(fk, JSON.stringify([...arr]));
-  } catch(e) {}
-}
-
-// Match tasks by name pattern
-function _findTaskByRole(role) {
-  const tasks = STATE.tasks;
-  if(role==='breakfast')       return tasks.find(t=>/breakfast/i.test(t.name));
-  if(role==='brushteeth')      return tasks.find(t=>/brush.*teeth(?!.*dinner)|teeth.*brush(?!.*dinner)|^brush teeth$/i.test(t.name))
-                                    || tasks.find(t=>/brush|teeth/i.test(t.name) && !/dinner/i.test(t.name));
-  if(role==='dinner')          return tasks.find(t=>/dinner/i.test(t.name) && !/brush|teeth/i.test(t.name));
-  if(role==='brushteeth-dinner') return tasks.find(t=>/dinner/i.test(t.name) && /brush|teeth/i.test(t.name));
-  if(role==='prayer')          return tasks.find(t=>/prayer|salah|namaz|shalat/i.test(t.name));
-  return null;
-}
-
-// Get earliest timestamp from taskLog for a kid+task on today
-function _getTaskDoneTime(kidId, taskName) {
-  const today = todayKey();
-  const matches = (STATE.taskLog||[]).filter(e=>
-    e.kidId===kidId &&
-    new Date(e.ts).toISOString().slice(0,10)===today &&
-    e.taskName===taskName
-  );
-  if(!matches.length) return null;
-  return Math.min(...matches.map(e=>e.ts));
-}
-
-// Speak a one-off reminder (separate from Stellar AI)
-function _speakReminder(text) {
-  try {
-    const doSpeak = voices => {
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.rate = 0.9; utt.pitch = 1.05; utt.volume = 1;
-      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-      if(pick) utt.voice = pick;
-      speechSynthesis.speak(utt);
-    };
+    speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(String(n));
+    utt.rate = 1.1; utt.pitch = 1.1; utt.volume = 1;
     const v = speechSynthesis.getVoices();
-    if(v.length) doSpeak(v);
-    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
+    const pick = v.find(x=>/Google US English|Samantha|Karen|Zira/i.test(x.name)) || v.find(x=>/en/i.test(x.lang)) || v[0];
+    if(pick) utt.voice = pick;
+    speechSynthesis.speak(utt);
   } catch(e) {}
 }
 
-// Auto-add a pending penalty warning on behalf of parent (no duplicate if same reason exists today,
-// and no re-add if parent has already dismissed this exact reason today).
-async function _addAutoPenaltyWarning(kidId, pts, reason, opts = {}) {
-  const requireApproval    = opts.requireApproval    !== false; // default true
-  const conditionTaskId    = opts.conditionTaskId    || '';
-  const done = JSON.parse(JSON.stringify(STATE.done));
-  const tk = todayKey();
-  if(!done[tk]) done[tk]={};
-  // Parent already dismissed this exact auto-warning today → never re-add
-  const suppressed = ((done[tk].suppressedAutoWarnings||{})[kidId]||[]).includes(reason);
-  if(suppressed) return;
-
-  if(requireApproval) {
-    // → pendingPenalties (requires parent confirmation)
-    if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
-    if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
-    const already = done[tk].pendingPenalties[kidId].some(p=>p.reason===reason);
-    if(already) return;
-    done[tk].pendingPenalties[kidId].push({
-      pts, reason,
-      id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
-      auto: true, conditionTaskId
-    });
-  } else {
-    // → xpenalties directly (no parent confirmation needed)
-    if(!done[tk].xpenalties) done[tk].xpenalties={};
-    if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
-    const already = done[tk].xpenalties[kidId].some(p=>p.reason===reason && p.auto);
-    if(already) return;
-    done[tk].xpenalties[kidId].push({
-      pts, reason,
-      id: Date.now()+'-auto-'+Math.random().toString(36).slice(2,6),
-      auto: true
-    });
-  }
-  await saveDone(done);
+function _speakTimerDone(taskName) {
+  try {
+    const text = 'Time's up for ' + taskName + '!';
+    const utt  = new SpeechSynthesisUtterance(text);
+    utt.rate = 0.9; utt.pitch = 1.0; utt.volume = 1;
+    const v = speechSynthesis.getVoices();
+    const pick = v.find(x=>/Google US English|Samantha|Karen|Zira/i.test(x.name)) || v.find(x=>/en/i.test(x.lang)) || v[0];
+    if(pick) utt.voice = pick;
+    speechSynthesis.speak(utt);
+  } catch(e) {}
 }
 
-// Auto-dismiss pending warnings when the condition task has been completed
-async function _checkAutoDismissWarnings() {
-  const tk = todayKey();
-  const todayDone = STATE.done[tk] || {};
-  const rules = STATE.warningRules || DEFAULT_WARNING_RULES;
-  const autoDismissRules = rules.filter(r => r.autoDismissOnTaskDone && r.enabled !== false);
-  if(!autoDismissRules.length) return;
-  const done = JSON.parse(JSON.stringify(STATE.done));
-  if(!done[tk]) return;
-  let changed = false;
+function _timerTick() {
+  const timers = STATE.timers || [];
+  const active = timers.filter(t=>t.active && t.startedAt);
+  if(!active.length) return;
 
-  STATE.kids.forEach(kid => {
-    const kidDone = (todayDone[kid.id]) || {};
-    const pending = done[tk]?.pendingPenalties?.[kid.id];
-    if(!pending || !pending.length) return;
+  const onKids = document.getElementById('view-kids')?.classList.contains('active');
 
-    const toRemove = [];
-    pending.forEach((p, i) => {
-      if(!p.auto || !p.conditionTaskId) return;
-      // If the condition task is now done, auto-dismiss this warning
-      if((kidDone[p.conditionTaskId] || 0) > 0) {
-        toRemove.push(i);
-        // Suppress so the rule doesn't re-add it
-        if(!done[tk].suppressedAutoWarnings) done[tk].suppressedAutoWarnings = {};
-        if(!done[tk].suppressedAutoWarnings[kid.id]) done[tk].suppressedAutoWarnings[kid.id] = [];
-        if(!done[tk].suppressedAutoWarnings[kid.id].includes(p.reason))
-          done[tk].suppressedAutoWarnings[kid.id].push(p.reason);
+  active.forEach(t => {
+    const secsLeft = _timerSecsLeft(t);
+    // Update kids view countdown elements
+    const kidCountEl = document.getElementById('kid-timer-count-'+t.id);
+    const kidWrapEl  = document.getElementById('kid-timer-wrap-'+t.id);
+    if(kidCountEl) {
+      const isUrgent = secsLeft <= 30;
+      if(secsLeft <= 30) {
+        kidCountEl.textContent = String(secsLeft);
+      } else {
+        const mm = String(Math.floor(secsLeft/60)).padStart(2,'0');
+        const ss = String(secsLeft%60).padStart(2,'0');
+        kidCountEl.textContent = mm+':'+ss;
       }
-    });
-    if(toRemove.length) {
-      done[tk].pendingPenalties[kid.id] = pending.filter((_, i) => !toRemove.includes(i));
-      changed = true;
+      kidCountEl.className = 'kid-timer-count ' + (isUrgent ? 'urgent' : 'normal');
+      if(kidWrapEl) { kidWrapEl.className = 'kid-timer-wrap' + (isUrgent ? ' urgent' : ''); }
+    }
+    // Update parent view countdown elements
+    const pCountEl = document.getElementById('ptimer-count-'+t.id);
+    if(pCountEl) {
+      const mm = String(Math.floor(secsLeft/60)).padStart(2,'0');
+      const ss = String(secsLeft%60).padStart(2,'0');
+      pCountEl.textContent = mm+':'+ss;
+      pCountEl.style.color = secsLeft <= 30 ? '#ff4444' : '#3498db';
+    }
+    // Countdown speech on kids screen
+    if(onKids && secsLeft <= 30 && secsLeft > 0) {
+      const spokenKey = t.id+'-'+secsLeft;
+      if(!_timerSpoken.has(spokenKey)) {
+        _timerSpoken.add(spokenKey);
+        _speakCountNumber(secsLeft);
+      }
+    }
+    // Time's up announcement
+    if(secsLeft === 0 && onKids) {
+      const doneKey = t.id+'-done';
+      if(!_timerSpoken.has(doneKey)) {
+        _timerSpoken.add(doneKey);
+        setTimeout(() => _speakTimerDone(t.taskName), 400);
+      }
     }
   });
-  if(changed) await saveDone(done);
 }
 
-// Silently fetch prayer times for the reminder system (no UI shown)
-let _fetchingPrayerBg = false;
-async function _fetchPrayerTimesBackground() {
-  if(_fetchingPrayerBg) return;
-  if(!navigator.geolocation) return;
-  _fetchingPrayerBg = true;
-  try {
-    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout:8000}));
-    const { latitude: lat, longitude: lon } = pos.coords;
-    const ts = Math.floor(Date.now()/1000);
-    const r = await fetch(`https://api.aladhan.com/v1/timings/${ts}?latitude=${lat}&longitude=${lon}&method=3`);
-    const j = await r.json();
-    if(j.code === 200) {
-      _prayerCache = { date: todayKey(), lat, lon, timings: j.data.timings, locationName: _prayerCache?.locationName || '' };
-    }
-  } catch(e) {}
-  _fetchingPrayerBg = false;
-}
-
-function checkTimeBasedReminders() {
-  const active = document.querySelector('[id^="view-"].active');
-  if(!active || active.id!=='view-kids') return; // only fires on kids screen
-
-  const tk = todayKey();
-  const todayDone = STATE.done[tk] || {};
-  const now = Date.now();
-  const d = new Date();
-  const totalMinsNow = d.getHours()*60 + d.getMinutes();
-
-  let bfTask  = _findTaskByRole('breakfast');
-  let btTask  = _findTaskByRole('brushteeth');
-  let dinTask = _findTaskByRole('dinner');
-  let btdTask = _findTaskByRole('brushteeth-dinner');
-
-  // Helper: "HH:MM" → total minutes since midnight
-  const toMins = t => { if(!t) return -1; const [h,m]=(t||'').split(':').map(Number); return h*60+m; };
-
-  // Silently ensure prayer times are fetched for time-based checks
-  if(!_prayerCache || _prayerCache.date !== todayKey()) _fetchPrayerTimesBackground();
-
-  STATE.kids.forEach(kid => {
-    const first = kid.name.split(' ')[0];
-    const kidDone = (todayDone[kid.id])||{};
-
-    // Helper: resolve a task by saved ID, then saved name, then auto-detect fallback
-    const resolveTask = (taskId, taskName, fallback) => {
-      if(taskId)   return STATE.tasks.find(t=>t.id===taskId) || fallback;
-      if(taskName) return STATE.tasks.find(t=>t.name.toLowerCase()===taskName.toLowerCase())
-                       || STATE.tasks.find(t=>t.name.toLowerCase().includes(taskName.toLowerCase()))
-                       || fallback;
-      return fallback;
-    };
-
-    // ── Condition 1: Breakfast → Brush Teeth (morning) ──
-    const rBrushBf = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-breakfast');
-    if(rBrushBf) {
-      bfTask = resolveTask(rBrushBf.triggerTaskId,   rBrushBf.triggerTaskName,   bfTask);
-      btTask = resolveTask(rBrushBf.conditionTaskId, rBrushBf.conditionTaskName, btTask);
-    }
-    if(rBrushBf && rBrushBf.enabled !== false && bfTask && btTask) {
-      const bfDone = (kidDone[bfTask.id]||0) > 0;
-      const btDone = (kidDone[btTask.id]||0) > 0;
-      if(bfDone && !btDone) {
-        const bfTs = _getTaskDoneTime(kid.id, bfTask.name);
-        if(bfTs) {
-          const minsSince = (now - bfTs) / 60000;
-          const remindMins = rBrushBf.remindMins || 30;
-          const warnMins   = rBrushBf.warnMins   || 60;
-          const pts        = rBrushBf.pts         || 5;
-          const warnReason = `Did not brush teeth within ${warnMins} min after breakfast`;
-          if(rBrushBf.remindEnabled !== false && minsSince >= remindMins && !_reminderFlags.has(kid.id+'-brush-remind')) {
-            _persistFlag(kid.id+'-brush-remind');
-            _speakReminder(`${first}! You had breakfast more than ${remindMins} minutes ago. Don't forget to brush your teeth!`);
-          }
-          if(rBrushBf.warnEnabled !== false && minsSince >= warnMins && !_reminderFlags.has(kid.id+'-brush-warn')) {
-            _persistFlag(kid.id+'-brush-warn');
-            _addAutoPenaltyWarning(kid.id, pts, warnReason, {
-              requireApproval: rBrushBf.requireParentApproval !== false,
-              conditionTaskId: btTask?.id || ''
-            });
-            // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
-          }
-        }
-      }
-    }
-
-    // ── Condition 2: Dinner → Brush Teeth after Dinner ──
-    const rBrushDin = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='brush-dinner');
-    if(rBrushDin) {
-      dinTask = resolveTask(rBrushDin.triggerTaskId,   rBrushDin.triggerTaskName,   dinTask);
-      btdTask = resolveTask(rBrushDin.conditionTaskId, rBrushDin.conditionTaskName, btdTask);
-    }
-    if(rBrushDin && rBrushDin.enabled !== false && dinTask && btdTask) {
-      const dinDone = (kidDone[dinTask.id]||0) > 0;
-      const btdDone = (kidDone[btdTask.id]||0) > 0;
-      if(dinDone && !btdDone) {
-        const dinTs = _getTaskDoneTime(kid.id, dinTask.name);
-        if(dinTs) {
-          const minsSince = (now - dinTs) / 60000;
-          const remindMins = rBrushDin.remindMins || 30;
-          const warnMins   = rBrushDin.warnMins   || 60;
-          const pts        = rBrushDin.pts         || 7;
-          const warnReason = `Did not brush teeth within ${warnMins} min after dinner`;
-          if(rBrushDin.remindEnabled !== false && minsSince >= remindMins && !_reminderFlags.has(kid.id+'-btd-remind')) {
-            _persistFlag(kid.id+'-btd-remind');
-            _speakReminder(`${first}! It's been more than ${remindMins} minutes since dinner. Don't forget to brush your teeth!`);
-          }
-          if(rBrushDin.warnEnabled !== false && minsSince >= warnMins && !_reminderFlags.has(kid.id+'-btd-warn')) {
-            _persistFlag(kid.id+'-btd-warn');
-            _addAutoPenaltyWarning(kid.id, pts, warnReason, {
-              requireApproval: rBrushDin.requireParentApproval !== false,
-              conditionTaskId: btdTask?.id || ''
-            });
-            // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
-          }
-        }
-      }
-    }
-
-    // ── Condition 3: N mins AFTER Dhuhr/Asr/Maghrib/Isha → warn if prayer not done ──
-    const rPrayer = (STATE.warningRules||DEFAULT_WARNING_RULES).find(r=>r.id==='prayer-pre');
-    if(rPrayer && rPrayer.enabled !== false && _prayerCache && _prayerCache.date === todayKey()) {
-      const map  = rPrayer.minsAfterPrayer || rPrayer.minsBeforePrayer || 40; // backwards compat
-      const pts  = rPrayer.pts || 5;
-      const half = Math.max(2, Math.round(map * 0.05)); // ±window (5% of grace, min 2 min)
-      const t    = _prayerCache.timings;
-      [['Dhuhr','Dhuhr'],['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
-        const pm = toMins(t[key]);
-        if(pm < 0) return;
-        const minsAfter = totalMinsNow - pm; // positive when prayer time has already passed
-        const flagKey   = kid.id+'-post'+map+'-'+key;
-        const warnReason = `Did not pray ${label} — ${map} minutes have passed since ${label} prayer time`;
-        if(rPrayer.warnEnabled !== false && minsAfter >= map-half && minsAfter <= map+half && !_reminderFlags.has(flagKey)) {
-          _persistFlag(flagKey);
-          _addAutoPenaltyWarning(kid.id, pts, warnReason, {
-            requireApproval: rPrayer.requireParentApproval !== false
-          });
-          // announcement handled by _announcePenaltyWarning via renderKidsView → no duplicate here
-        }
-      });
-    }
-  });
-
-  // ── Auto-dismiss warnings when condition task is now done ──
-  _checkAutoDismissWarnings();
-  // ── Check pending announcements from parent ──
-  checkPendingAnnouncements();
-
-  // ── Prayer time call to prayer (Adhan announcement) — global, not per kid ──
-  if(_prayerCache && _prayerCache.date === todayKey()) {
-    const t = _prayerCache.timings;
-    [['Fajr','Fajr'],['Dhuhr','Dhuhr'],['Asr','Asr'],['Maghrib','Maghrib'],['Isha','Isha']].forEach(([key, label]) => {
-      const pm = toMins(t[key]);
-      if(pm < 0) return;
-      const flagKey = 'global-adhan-'+key;
-      // Announce within a 2-minute window of prayer start; persist so reload won't re-fire
-      if(totalMinsNow >= pm && totalMinsNow <= pm+1 && !_reminderFlags.has(flagKey)) {
-        _persistFlag(flagKey);
-        _speakReminder(`It is time for ${label} Prayer. Allahu Akbar.`);
-      }
-    });
-  }
-}
-
-// ── Penalty warning announcements (per session, per unique penalty id) ──
-const _warnedPenaltyIds    = new Set();
-const _confirmedPenaltyIds = new Set();
-
-function _announceConfirmedPenalty(kidName, penalties) {
-  const newOnes = penalties.filter(p=>p.id && !_confirmedPenaltyIds.has(p.id));
-  if(!newOnes.length) return;
-  newOnes.forEach(p=>_confirmedPenaltyIds.add(p.id));
-  const first = kidName.split(' ')[0];
-  // Build ONE combined utterance for all new confirmed penalties (avoids multiple speeches)
-  const totalPts = newOnes.reduce((s,p)=>s+(p.pts||0), 0);
-  const ores = (totalPts * ORE_PER_PT).toFixed(1);
-  let text;
-  if(newOnes.length === 1) {
-    const p = newOnes[0];
-    text = `${first}, ${p.pts} point${p.pts!==1?'s':''} have been deducted${p.reason?' for '+p.reason:''}. ${ores} Öres have also been deducted from your account.`;
-  } else {
-    const reasons = newOnes.map(p=>`${p.pts} points for ${p.reason||'a deduction'}`).join(', and ');
-    text = `${first}, a total of ${totalPts} points have been deducted: ${reasons}. ${ores} Öres have been deducted from your account.`;
-  }
-  try {
-    const doSpeak = voices => {
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.rate = 0.92; utt.pitch = 1.0; utt.volume = 1;
-      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-      if(pick) utt.voice = pick;
-      setTimeout(()=>speechSynthesis.speak(utt), 200);
-    };
-    const v = speechSynthesis.getVoices();
-    if(v.length) doSpeak(v);
-    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
-  } catch(e) {}
-}
-
-function _announcePenaltyWarning(kidName, penalties) {
-  const newOnes = penalties.filter(p=>!_warnedPenaltyIds.has(p.id));
-  if(!newOnes.length) return;
-  // Mark ALL as warned before speaking so no re-entry on concurrent renders
-  newOnes.forEach(p=>_warnedPenaltyIds.add(p.id));
-  const first = kidName.split(' ')[0];
-  // Single combined utterance
-  const reasons = newOnes.map(p=>p.reason||'a deduction').join(', and ');
-  const text = `${first}, you have a warning! ${reasons}. A parent needs to confirm this.`;
-  try {
-    const doSpeak = voices => {
-      const utt = new SpeechSynthesisUtterance(text);
-      utt.rate = 0.92; utt.pitch = 1.05; utt.volume = 1;
-      const pick = voices.find(v=>/Google US English|Samantha|Karen|Zira|Victoria/i.test(v.name))
-                || voices.find(v=>/en/i.test(v.lang)) || voices[0];
-      if(pick) utt.voice = pick;
-      setTimeout(()=>speechSynthesis.speak(utt), 200);
-    };
-    const v = speechSynthesis.getVoices();
-    if(v.length) doSpeak(v);
-    else { speechSynthesis.onvoiceschanged=()=>{ speechSynthesis.onvoiceschanged=null; doSpeak(speechSynthesis.getVoices()); }; }
-  } catch(e) {}
-}
+window.createTimer=createTimer; window.startTimer=startTimer; window.cancelTimer=cancelTimer;
 
 // ============ KIDS VIEW ============
 function renderKidsView() {
@@ -2614,12 +2370,6 @@ function renderKidsView() {
     kidDeeds.forEach(d=>{ pts+=d.pts||0; });
     const kidAdjKV = ((todayDone.adjustments||{})[kid.id])||{bonus:0,penalty:0};
     pts = Math.max(0, pts + (kidAdjKV.bonus||0) - (kidAdjKV.penalty||0) + getXBonusPts(todayDone, kid.id) - getXPenaltyPts(todayDone, kid.id));
-    // Pending penalty warnings — announce new ones via TTS
-    const kidPendingPenalties = ((todayDone.pendingPenalties||{})[kid.id]||[]);
-    if(kidPendingPenalties.length) _announcePenaltyWarning(kid.name, kidPendingPenalties);
-    // Confirmed penalties — announce newly confirmed ones via TTS
-    const kidConfirmedPenalties = ((todayDone.xpenalties||{})[kid.id]||[]).filter(p=>p.id);
-    if(kidConfirmedPenalties.length) _announceConfirmedPenalty(kid.name, kidConfirmedPenalties);
     // Level-up detection — only on kids view (the screen the kids watch)
     const active = document.querySelector('[id^="view-"].active');
     if(active && active.id==='view-kids') {
@@ -2769,40 +2519,35 @@ function renderKidsView() {
       })()}
       ${tasks.length||kidDeeds.length?`<ul class="kid-tasks-list" style="margin-top:0.75rem">${taskItems}${kidDeeds.map(d=>`<li class="kid-task-item"><div class="kid-task-check done">✓</div><span class="kid-task-name" style="color:#FFD700">✨ ${escHtml(d.desc)}</span><span class="kid-task-pts">+${d.pts}pts</span></li>`).join('')}</ul>`:'<div style="opacity:0.4;font-size:0.78rem;text-align:center;margin:0.5rem 0">No tasks yet!</div>'}
       ${(()=>{
-        const kpen = ((todayDone.xpenalties||{})[kid.id]||[]);
-        if(!kpen.length) return '';
-        return `<div style="margin:0.4rem 0 0;padding:0.4rem 0.6rem;background:rgba(231,76,60,0.08);border:1px solid rgba(231,76,60,0.2);border-radius:10px">
-          <div style="font-size:0.68rem;font-weight:700;color:rgba(231,76,60,0.8);margin-bottom:0.25rem;letter-spacing:0.04em">😕 DEDUCTIONS TODAY</div>
-          ${kpen.map(p=>`<div style="display:flex;justify-content:space-between;font-size:0.78rem;padding:0.15rem 0;opacity:0.85">
-            <span>${escHtml(p.reason||'Deduction')}</span>
-            <span style="color:#e74c3c;font-weight:700">−${p.pts}pts</span>
-          </div>`).join('')}
-        </div>`;
-      })()}
-      ${(()=>{
-        if(!kidPendingPenalties.length) return '';
-        const totalDeduct = kidPendingPenalties.reduce((s,p)=>s+(p.pts||0),0);
-        const scoreAfter  = Math.max(0, pts - totalDeduct);
-        return `<div style="margin:0.5rem 0 0;padding:0.55rem 0.75rem;background:rgba(255,60,60,0.13);border:2px solid rgba(255,60,60,0.5);border-radius:12px;animation:pulse 1.8s ease-in-out infinite">
-          <div style="font-size:0.82rem;font-weight:700;color:#ff4444;margin-bottom:0.3rem">⚠️ WARNING — Waiting for parent</div>
-          ${kidPendingPenalties.map(p=>`<div style="display:flex;justify-content:space-between;font-size:0.78rem;margin:0.15rem 0;opacity:0.9">
-            <span>${escHtml(p.reason||'Point deduction')}</span>
-            <span style="color:#ff4444;font-weight:700">−${p.pts}pts</span>
-          </div>`).join('')}
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.4rem;padding-top:0.35rem;border-top:1px solid rgba(255,60,60,0.25);font-size:0.75rem">
-            <span style="opacity:0.65">Score if confirmed:</span>
-            <span style="font-weight:700;color:#ff8888">${pts} → ${scoreAfter} pts</span>
-          </div>
-          <div style="font-size:0.65rem;opacity:0.55;margin-top:0.25rem">A parent will confirm or cancel this</div>
-        </div>`;
-      })()}
+        const activeTimers = (STATE.timers||[]).filter(t=>t.active && t.kidId===kid.id);
+        if(!activeTimers.length) return '';
+        return activeTimers.map(t => {
+          const secsLeft = t.startedAt ? Math.max(0, t.durationSecs - Math.floor((Date.now()-t.startedAt)/1000)) : null;
+          const isRunning = !!t.startedAt;
+          const isUrgent  = isRunning && secsLeft !== null && secsLeft <= 30;
+          let countHtml;
+          if(!isRunning) {
+            countHtml = `<span class="kid-timer-count waiting" id="kid-timer-count-${t.id}">Not started yet</span>`;
+          } else {
+            const mm = String(Math.floor(secsLeft/60)).padStart(2,'0');
+            const ss = String(secsLeft%60).padStart(2,'0');
+            const display = secsLeft <= 30 ? String(secsLeft) : `${mm}:${ss}`;
+            countHtml = `<span class="kid-timer-count ${isUrgent?'urgent':'normal'}" id="kid-timer-count-${t.id}">${display}</span>`;
+          }
+          return `<div class="kid-timer-wrap${isUrgent?' urgent':''}" id="kid-timer-wrap-${t.id}">
+            <span style="font-size:1.4rem;flex-shrink:0">${isUrgent?'⏰':'⏱️'}</span>
+            <div class="kid-timer-body">
+              <div class="kid-timer-task">${escHtml(t.taskName)}</div>
+              ${countHtml}
+            </div>
+          </div>`;
+        }).join('');
+      })()} 
       <button class="kh-card-btn" onclick="openKidsHistory('${kid.id}')">📅 View My History</button>
       <button class="suggest-btn-deed" onclick="openDeedModal('${kid.id}')">✨ Something not on the list?</button>
       <input type="file" accept="image/*" id="photo-input-${kid.id}" style="display:none" onchange="handlePhotoUpload('${kid.id}',this)">
     </div>`;
   }).join('');
-  // Time-based reminders + pending announcements — fire ONCE per render, not once per kid
-  setTimeout(checkTimeBasedReminders, 500);
   setTimeout(checkPendingAnnouncements, 300);
   // Scroll each level strip so the current level chip is centred
   const { kids: ks2 } = getData();
@@ -2815,7 +2560,7 @@ function renderKidsView() {
 }
 
 // ============ PARENT VIEW ============
-function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); renderAnnounceTab(); renderWarningsTab(); }
+function renderParentView() { renderMarkTab(); renderApprovalsTab(); renderTasksTab(); renderKidsTab(); renderLevelsEditor(); updatePendingBadge(); renderMoneyTab(); renderLogTab(); renderAnnounceTab(); renderTimersTab(); }
 
 function renderMarkTab() {
   const { kids, tasks, done } = getData();
@@ -3096,50 +2841,15 @@ async function addXPenalty(kidId) {
   const done = JSON.parse(JSON.stringify(STATE.done));
   const tk = todayKey();
   if(!done[tk]) done[tk]={};
-  if(!done[tk].pendingPenalties) done[tk].pendingPenalties={};
-  if(!done[tk].pendingPenalties[kidId]) done[tk].pendingPenalties[kidId]=[];
-  done[tk].pendingPenalties[kidId].push({pts, reason, id: Date.now()+'-'+Math.random().toString(36).slice(2,6)});
+  if(!done[tk].xpenalties) done[tk].xpenalties={};
+  if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
+  done[tk].xpenalties[kidId].push({pts, reason, id: Date.now()+'-'+Math.random().toString(36).slice(2,6)});
   await saveDone(done);
   if(ptsEl) ptsEl.value='';
   if(reasonEl) reasonEl.value='';
   const kid = STATE.kids.find(k=>k.id===kidId);
-  toast((kid?kid.emoji+' ':'')+'⚠️ Warning sent to '+( kid?kid.name:'kid')+'\'s screen');
+  toast((kid?kid.emoji+' ':'')+'−'+pts+' pts deducted from '+(kid?kid.name:'kid'));
   updatePendingBadge();
-}
-
-async function confirmPenalty(kidId, idx) {
-  const done = JSON.parse(JSON.stringify(STATE.done));
-  const tk = todayKey();
-  const entry = ((done[tk]?.pendingPenalties)||{})[kidId]?.[idx];
-  if(!entry) return;
-  // Move to xpenalties
-  if(!done[tk].xpenalties) done[tk].xpenalties={};
-  if(!done[tk].xpenalties[kidId]) done[tk].xpenalties[kidId]=[];
-  done[tk].xpenalties[kidId].push({pts:entry.pts, reason:entry.reason, id:entry.id});
-  done[tk].pendingPenalties[kidId].splice(idx,1);
-  await saveDone(done);
-  const kid = STATE.kids.find(k=>k.id===kidId);
-  toast((kid?kid.emoji+' ':'')+'−'+entry.pts+' pts confirmed');
-  renderApprovalsTab(); updatePendingBadge();
-}
-
-async function dismissPenalty(kidId, idx) {
-  const done = JSON.parse(JSON.stringify(STATE.done));
-  const tk = todayKey();
-  if(!done[tk]?.pendingPenalties?.[kidId]) return;
-  const penalty = done[tk].pendingPenalties[kidId][idx];
-  // If this was auto-generated, record suppression so the system never re-adds it today
-  if(penalty && penalty.auto && penalty.reason) {
-    if(!done[tk].suppressedAutoWarnings) done[tk].suppressedAutoWarnings = {};
-    if(!done[tk].suppressedAutoWarnings[kidId]) done[tk].suppressedAutoWarnings[kidId] = [];
-    if(!done[tk].suppressedAutoWarnings[kidId].includes(penalty.reason)) {
-      done[tk].suppressedAutoWarnings[kidId].push(penalty.reason);
-    }
-  }
-  done[tk].pendingPenalties[kidId].splice(idx, 1);
-  await saveDone(done);
-  toast('Warning cancelled — no points deducted');
-  renderApprovalsTab(); updatePendingBadge();
 }
 
 function startEditXPenalty(kidId, day, idx) {
@@ -3967,8 +3677,6 @@ function renderLogTab() {
         kidEvents[kid.id].push({ ts: dayTs, name: b.reason || 'Bonus points',    type: 'bonus',   status: 'bonus',   pts: b.pts, by: 'parent' }));
       ((dd.xpenalties || {})[kid.id] || []).forEach(p =>
         kidEvents[kid.id].push({ ts: dayTs, name: p.reason || 'Point deduction', type: 'penalty', status: 'penalty', pts: p.pts, by: 'parent' }));
-      ((dd.pendingPenalties || {})[kid.id] || []).forEach(p =>
-        kidEvents[kid.id].push({ ts: dayTs, name: p.reason || 'Warning',         type: 'warning', status: 'warning', pts: p.pts, by: 'auto'   }));
     });
   });
 
@@ -4188,7 +3896,7 @@ function switchTab(name, btn) {
   _touchParentSession(); // any tab interaction resets the 10-min idle clock
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  ['mark','approvals','tasks','kids','settings','history','money','log','announce','warnings'].forEach(t=>{
+  ['mark','approvals','tasks','kids','settings','history','money','log','announce','timers'].forEach(t=>{
     const el = document.getElementById('tab-'+t); if(el) el.style.display=t===name?'':'none';
   });
   if(name==='mark')      renderMarkTab();
@@ -4200,7 +3908,7 @@ function switchTab(name, btn) {
   if(name==='money')     renderMoneyTab();
   if(name==='log')       renderLogTab();
   if(name==='announce')  renderAnnounceTab();
-  if(name==='warnings')  renderWarningsTab();
+  if(name==='timers')    renderTimersTab();
 }
 
 
@@ -4746,7 +4454,7 @@ makeStars();
 // Load initial data from Firebase, then start listeners
 async function init() {
   try {
-    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData, chatData, warningRulesData] = await Promise.all([
+    const [kidsData, tasksData, doneData, settingsData, pendingData, spendingData, bonusesData, tasklogData, announcementsData, chatData, timersData] = await Promise.all([
       fbGet('kids',    { list: [] }),
       fbGet('tasks',   { list: [] }),
       fbGet('done',    { days: {} }),
@@ -4757,7 +4465,7 @@ async function init() {
       fbGet('tasklog',       { entries:[] }),
       fbGet('announcements', { items:[] }),
       fbGet('chat',          { messages:[] }),
-      fbGet('warningrules',  { rules: DEFAULT_WARNING_RULES.map(r=>({...r})) }),
+      fbGet('timers',        { items:[] }),
     ]);
     STATE.kids   = kidsData.list   || [];
     STATE.tasks  = tasksData.list  || [];
@@ -4771,16 +4479,13 @@ async function init() {
     STATE.taskLog      = tasklogData.entries    || [];
     STATE.announcements = announcementsData.items || [];
     STATE.chat          = chatData.messages || [];
-    STATE.warningRules  = warningRulesData._v !== undefined
-                          ? (warningRulesData.rules || [])
-                          : DEFAULT_WARNING_RULES.map(r=>({...r}));
+    STATE.timers = timersData.items || [];
   } catch(e) {
     console.warn('Init load failed, using defaults', e);
   }
 
   STATE._ready = true;
   await autoFillLevels(); // auto-name any unnamed levels
-  _loadFiredFlagsFromStorage(); // seed reminder flags from today's localStorage so reload doesn't re-fire
   document.getElementById('loading-screen').style.display='none';
   // Restore parent session if still valid, otherwise show kids view
   if(_hasValidParentSession()) {
@@ -4796,10 +4501,8 @@ async function init() {
   startListeners();
   // Update badge immediately after load so existing approvals show
   setTimeout(updatePendingBadge, 100);
-  // Time-based reminders — check every 60 seconds
-  setInterval(checkTimeBasedReminders, 60 * 1000);
-  setTimeout(checkTimeBasedReminders, 3000); // initial check after data settles
-  setTimeout(_fetchPrayerTimesBackground, 5000); // pre-load prayer times silently
+  // Task timer countdown tick — every 1 second
+  setInterval(_timerTick, 1000);
 
   // Load refresh setting from localStorage (device-specific preference)
   const rs = localStorage.getItem('sc_refresh')||'10';
@@ -5471,28 +5174,65 @@ window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
 window.addXBonus=addXBonus; window.startEditXBonus=startEditXBonus; window.saveXBonus=saveXBonus; window.cancelEditXBonus=cancelEditXBonus; window.deleteXBonus=deleteXBonus;
-window.addXPenalty=addXPenalty; window.confirmPenalty=confirmPenalty; window.dismissPenalty=dismissPenalty;
+window.addXPenalty=addXPenalty;
 window.startEditXPenalty=startEditXPenalty; window.saveXPenalty=saveXPenalty; window.cancelEditXPenalty=cancelEditXPenalty; window.deleteXPenalty=deleteXPenalty;
 window.startEditDeed=startEditDeed; window.saveDeedEdit=saveDeedEdit; window.cancelDeedEdit=cancelDeedEdit; window.deleteDeed=deleteDeed;
 window.renderXBonusList=renderXBonusList; window.renderDeedList=renderDeedList; window.getXBonusPts=getXBonusPts;
 window.openKidEdit=openKidEdit; window.closeKidEdit=closeKidEdit; window.saveKidEdit=saveKidEdit;
 window.renderLogTab=renderLogTab;
-window.renderWarningsTab=renderWarningsTab; window.issueManualWarning=issueManualWarning; window.saveWarningRule=saveWarningRule;
-window.handleWrTaskSel=handleWrTaskSel; window.handleNwrType=handleNwrType; window.deleteWarningRule=deleteWarningRule; window.addWarningRule=addWarningRule;
-window.checkTimeBasedReminders=checkTimeBasedReminders;
 // ============ CHAT ============
 let _chatKidId = null; // which kid is chatting (kids view only)
 let _chatLastSeen = 0; // timestamp of last message seen by this session
+let _chatSoundEnabled = false; // unlocked after first user interaction
+let _chatLastSoundTs = 0; // prevent duplicate sounds for the same message
+
+// Unlock audio on first interaction (browser autoplay policy)
+document.addEventListener('click', () => { _chatSoundEnabled = true; }, { once: true });
+
+function _playChatSound() {
+  if(!_chatSoundEnabled) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Two-tone chime: high then slightly lower
+    [[880, 0, 0.18], [1100, 0.12, 0.28]].forEach(([freq, start, end]) => {
+      const osc  = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + start);
+      gain.gain.setValueAtTime(0, ctx.currentTime + start);
+      gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + start + 0.04);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + end);
+      osc.start(ctx.currentTime + start);
+      osc.stop(ctx.currentTime + end);
+    });
+  } catch(e) {}
+}
 
 function _updateChatUnread() {
-  const btn = document.getElementById('chat-btn');
+  const btn   = document.getElementById('chat-btn');
+  const badge = document.getElementById('chat-unread-badge');
   if(!btn) return;
   const msgs = STATE.chat || [];
-  const last = msgs.length ? msgs[msgs.length-1].ts : 0;
-  if(last > _chatLastSeen) {
+  const myId = _chatSenderId();
+  // Count messages from others that arrived after last seen
+  const unread = msgs.filter(m => m.ts > _chatLastSeen && m.sender !== myId).length;
+  const chatOpen = document.getElementById('chat-overlay').classList.contains('open');
+
+  // Latest message timestamp from others
+  const latestFromOther = msgs.filter(m => m.sender !== myId).reduce((mx, m) => Math.max(mx, m.ts), 0);
+
+  if(unread > 0 && !chatOpen) {
     btn.classList.add('has-unread');
+    if(badge) { badge.textContent = unread > 9 ? '9+' : unread; badge.style.display = 'flex'; }
+    // Play sound only once per new message (not on every re-render)
+    if(latestFromOther > _chatLastSoundTs) {
+      _chatLastSoundTs = latestFromOther;
+      _playChatSound();
+    }
   } else {
     btn.classList.remove('has-unread');
+    if(badge) badge.style.display = 'none';
   }
 }
 
@@ -5500,13 +5240,21 @@ function openChat() {
   // Mark all current messages as seen
   const msgs = STATE.chat || [];
   _chatLastSeen = msgs.length ? msgs[msgs.length-1].ts : Date.now();
-  document.getElementById('chat-btn').classList.remove('has-unread');
+  const btn   = document.getElementById('chat-btn');
+  const badge = document.getElementById('chat-unread-badge');
+  btn.classList.remove('has-unread');
+  if(badge) badge.style.display = 'none';
 
   const overlay = document.getElementById('chat-overlay');
   overlay.classList.add('open');
 
   // Determine context: are we on kids or parent view?
   const onKids = document.getElementById('view-kids').classList.contains('active');
+
+  // Show Clear All button only for parent
+  const clearBtn = document.getElementById('chat-clear-btn');
+  if(clearBtn) clearBtn.style.display = onKids ? 'none' : '';
+
   renderChatKidSelector(onKids);
   renderChatMessages();
 
@@ -5579,17 +5327,17 @@ function renderChatMessages() {
   if(!container) return;
   const msgs = STATE.chat || [];
   const myId = _chatSenderId();
+  const isParent = !document.getElementById('view-kids').classList.contains('active');
 
   if(!msgs.length) {
     container.innerHTML = '<div style="text-align:center;opacity:0.3;padding:2rem;font-size:0.9rem">No messages yet. Say hello! 👋</div>';
     return;
   }
 
-  // Group consecutive messages from same sender
   let html = '';
   let prevSender = null;
   const now = Date.now();
-  msgs.forEach((msg, i) => {
+  msgs.forEach((msg, idx) => {
     const isMine = msg.sender === myId;
     const senderChanged = msg.sender !== prevSender;
     prevSender = msg.sender;
@@ -5597,19 +5345,27 @@ function renderChatMessages() {
     const name = _chatSenderName(msg.sender);
     const avatar = _chatSenderAvatar(msg.sender);
     const timeStr = _chatTimeAgo(msg.ts, now);
+    const tsKey = msg.ts; // used as unique key
 
-    html += `<div class="chat-bubble-wrap ${isMine ? 'mine' : 'theirs'}">`;
+    html += `<div class="chat-bubble-wrap ${isMine ? 'mine' : 'theirs'}" id="chatmsg-${tsKey}">`;
     if(senderChanged) {
       html += `<div class="chat-sender-label">${isMine ? '' : avatar + ' '}${name} · ${timeStr}</div>`;
     }
     html += `<div class="chat-bubble ${isMine ? 'mine' : 'theirs'}" style="
       background: ${isMine ? 'rgba(52,152,219,0.28)' : 'rgba(255,255,255,0.1)'};
       border: 1px solid ${isMine ? 'rgba(52,152,219,0.4)' : 'rgba(255,255,255,0.12)'};
-    ">${_escHtml(msg.text)}</div>`;
+    " id="chatbubble-${tsKey}">${_escHtml(msg.text)}</div>`;
+
+    // Edit/Delete actions — parent sees them on every message; kids only on their own
+    if(isParent || isMine) {
+      html += `<div class="chat-msg-actions" id="chatactions-${tsKey}">`;
+      html += `<button class="chat-msg-act-btn" onclick="editChatMsg(${tsKey})">✏️ Edit</button>`;
+      html += `<button class="chat-msg-act-btn del" onclick="deleteChatMsg(${tsKey})">🗑 Delete</button>`;
+      html += `</div>`;
+    }
     html += '</div>';
   });
   container.innerHTML = html;
-  // Scroll to bottom
   container.scrollTop = container.scrollHeight;
 }
 
@@ -5639,6 +5395,53 @@ async function sendChatMessage() {
   _chatLastSeen = msg.ts;
   document.getElementById('chat-btn').classList.remove('has-unread');
   await saveChat(msgs);
+  renderChatMessages();
+}
+
+async function clearChat() {
+  if(!confirm('Clear the entire chat? This cannot be undone.')) return;
+  await saveChat([]);
+  renderChatMessages();
+  toast('Chat cleared');
+}
+
+async function deleteChatMsg(ts) {
+  const msgs = (STATE.chat || []).filter(m => m.ts !== ts);
+  await saveChat(msgs);
+  renderChatMessages();
+}
+
+function editChatMsg(ts) {
+  const msg = (STATE.chat || []).find(m => m.ts === ts);
+  if(!msg) return;
+  const bubble = document.getElementById('chatbubble-'+ts);
+  const actions = document.getElementById('chatactions-'+ts);
+  if(!bubble) return;
+  // Replace bubble with inline editor
+  bubble.outerHTML = `<div class="chat-edit-wrap" id="chatedit-${ts}">
+    <input class="chat-edit-input" id="chatedit-input-${ts}" value="${_escHtml(msg.text)}" onkeydown="if(event.key==='Enter')saveChatMsgEdit(${ts});if(event.key==='Escape')cancelChatMsgEdit(${ts})">
+    <button class="btn btn-approve btn-sm" onclick="saveChatMsgEdit(${ts})">Save</button>
+    <button class="btn btn-sm" style="background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.15)" onclick="cancelChatMsgEdit(${ts})">✕</button>
+  </div>`;
+  if(actions) actions.style.display = 'none';
+  setTimeout(() => {
+    const inp = document.getElementById('chatedit-input-'+ts);
+    if(inp) { inp.focus(); inp.select(); }
+  }, 30);
+}
+
+async function saveChatMsgEdit(ts) {
+  const inp = document.getElementById('chatedit-input-'+ts);
+  const newText = inp ? inp.value.trim() : '';
+  if(!newText) return;
+  const msgs = JSON.parse(JSON.stringify(STATE.chat || []));
+  const m = msgs.find(m => m.ts === ts);
+  if(m) { m.text = newText; m.edited = true; }
+  await saveChat(msgs);
+  renderChatMessages();
+}
+
+function cancelChatMsgEdit(ts) {
   renderChatMessages();
 }
 
@@ -5672,344 +5475,83 @@ function startChatVoice() {
 }
 
 window.openPrayerTimes=openPrayerTimes; window.closePrayerTimes=closePrayerTimes;
-// ============ WARNINGS TAB ============
-// ── Task selector helper: list + custom name option ──
-function _wrTaskSelectHtml(fieldId, selTaskId, customName) {
-  const isCustom = !selTaskId && !!customName;
-  const selVal   = selTaskId || (isCustom ? '__custom__' : '');
-  const opts = `<option value="" ${!selVal?'selected':''}>— auto-detect by task name —</option>`
-    + (STATE.tasks||[]).map(t=>`<option value="${escHtml(t.id)}" ${selTaskId===t.id?'selected':''}>${escHtml(t.name)}</option>`).join('')
-    + `<option value="__custom__" ${isCustom?'selected':''}>✏️ Enter task name manually…</option>`;
-  return `<select class="form-input" id="${fieldId}-sel" style="width:100%" onchange="handleWrTaskSel('${fieldId}')">${opts}</select>
-    <input class="form-input" id="${fieldId}-txt" placeholder="Type task name…" value="${escHtml(customName||'')}"
-      style="width:100%;margin-top:0.3rem;${isCustom?'':'display:none'}">`;
-}
-
-function handleWrTaskSel(fieldId) {
-  const sel = document.getElementById(fieldId+'-sel');
-  const txt = document.getElementById(fieldId+'-txt');
-  if(sel && txt) txt.style.display = sel.value === '__custom__' ? '' : 'none';
-}
-
-// ── Read task select back into {taskId, taskName} ──
-function _readWrTask(fieldId) {
-  const sel = document.getElementById(fieldId+'-sel');
-  const txt = document.getElementById(fieldId+'-txt');
-  if(!sel) return { taskId:'', taskName:'' };
-  if(sel.value === '__custom__') return { taskId:'', taskName:(txt?.value||'').trim() };
-  return { taskId: sel.value, taskName: '' };
-}
-
-function renderWarningsTab() {
-  const el = document.getElementById('warnings-content');
+// ============ TIMERS TAB ============
+function renderTimersTab() {
+  const el = document.getElementById('timers-content');
   if(!el) return;
   const kids  = STATE.kids  || [];
-  const rules = STATE.warningRules || [];
+  const timers = STATE.timers || [];
 
-  // ── Manual Warning Section ──
-  const kidOpts = kids.map(k=>`<option value="${k.id}">${k.emoji||'⭐'} ${escHtml(k.name)}</option>`).join('');
-  const manualHtml = `
-    <div class="p-card" style="margin-bottom:1.2rem;border-left:3px solid #e74c3c">
-      <div style="font-weight:800;font-size:1rem;color:#e74c3c;margin-bottom:0.9rem">🚨 Issue Manual Warning</div>
-      ${!kids.length ? '<div style="opacity:0.5;font-size:0.85rem">No children added yet.</div>' : `
-      <div style="display:flex;flex-direction:column;gap:0.6rem">
-        <div><label class="form-label">Child</label>
-          <select class="form-input" id="warn-kid-sel" style="width:100%">${kidOpts}</select></div>
-        <div><label class="form-label">Reason for warning</label>
-          <input class="form-input" id="warn-reason" placeholder="e.g. Left room messy after being asked" style="width:100%"></div>
-        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
-          <div><label class="form-label">Points if confirmed</label>
-            <input class="form-input" id="warn-pts" type="number" min="1" max="100" placeholder="e.g. 5" style="width:100px"></div>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;cursor:pointer;padding-bottom:0.35rem">
-            <input type="checkbox" id="warn-require-approval" checked style="width:15px;height:15px;cursor:pointer">
-            Send to parent for approval
-          </label>
-        </div>
-        <button class="btn" style="background:rgba(231,76,60,0.25);border:1px solid rgba(231,76,60,0.5);color:#e74c3c;align-self:flex-start"
-          onclick="issueManualWarning()">⚠️ Issue Warning</button>
-      </div>`}
-    </div>`;
+  const kidOpts = kids.map(function(k){ return '<option value="'+k.id+'">'+( k.emoji||'⭐')+' '+escHtml(k.name)+'</option>'; }).join('');
 
-  // ── Add New Rule form (hidden until toggled) ──
-  const newRuleForm = `
-    <div id="add-rule-panel" style="display:none;margin-bottom:1rem">
-      <div class="p-card" style="border-left:3px solid #3498db">
-        <div style="font-weight:700;color:#3498db;margin-bottom:0.7rem">➕ New Automatic Rule</div>
-        <div style="display:flex;flex-direction:column;gap:0.55rem">
-          <div><label class="form-label" style="font-size:0.7rem">Rule name</label>
-            <input class="form-input" id="nwr-name" placeholder="e.g. Screen time reminder" style="width:100%"></div>
-          <div><label class="form-label" style="font-size:0.7rem">Rule type</label>
-            <select class="form-input" id="nwr-type" style="width:100%" onchange="handleNwrType()">
-              <option value="brush">⏱ After task — if another task not done within time limit</option>
-              <option value="prayer">🕌 Prayer time — minutes after prayer starts</option>
-            </select>
-          </div>
-          <!-- Reminder sub-section -->
-          <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.2);border-radius:8px;padding:0.55rem 0.7rem">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
-              <span style="font-size:0.8rem;font-weight:700;color:#3498db">📣 Reminder</span>
-              <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
-                <input type="checkbox" id="nwr-remindEnabled" checked style="width:14px;height:14px;cursor:pointer"> Enabled
-              </label>
-            </div>
-            <div id="nwr-brush-remind-fields">
-              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-                <div style="flex:1;min-width:160px"><label class="form-label" style="font-size:0.7rem">Trigger task (when done, start timer)</label>
-                  ${_wrTaskSelectHtml('nwr-trigger','','')}</div>
-              </div>
-              <div style="margin-top:0.4rem"><label class="form-label" style="font-size:0.7rem">Speak reminder after (min)</label>
-                <input class="form-input" type="number" min="1" id="nwr-remindMins" value="30" style="width:80px"></div>
-            </div>
-            <div id="nwr-prayer-remind-fields" style="display:none;font-size:0.75rem;opacity:0.55">No verbal reminder for prayer rules.</div>
-          </div>
-          <!-- Warning sub-section -->
-          <div style="background:rgba(255,165,0,0.07);border:1px solid rgba(255,165,0,0.2);border-radius:8px;padding:0.55rem 0.7rem">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
-              <span style="font-size:0.8rem;font-weight:700;color:#FFA500">⚠️ Warning</span>
-              <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
-                <input type="checkbox" id="nwr-warnEnabled" checked style="width:14px;height:14px;cursor:pointer"> Enabled
-              </label>
-            </div>
-            <div id="nwr-brush-warn-fields">
-              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
-                <div style="flex:1;min-width:160px"><label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
-                  ${_wrTaskSelectHtml('nwr-condition','','')}</div>
-                <div><label class="form-label" style="font-size:0.7rem">Show warning after (min)</label>
-                  <input class="form-input" type="number" min="1" id="nwr-warnMins" value="60" style="width:80px"></div>
-              </div>
-              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;margin-top:0.4rem">
-                <input type="checkbox" id="nwr-autoDismiss" checked style="width:14px;height:14px;cursor:pointer">
-                Auto-dismiss warning if task is completed after warning
-              </label>
-            </div>
-            <div id="nwr-prayer-warn-fields" style="display:none">
-              <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
-                <input class="form-input" type="number" min="1" id="nwr-minsAfterPrayer" value="40" style="width:80px"></div>
-            </div>
-          </div>
-          <!-- Penalty sub-section -->
-          <div style="background:rgba(231,76,60,0.07);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:0.55rem 0.7rem">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
-              <span style="font-size:0.8rem;font-weight:700;color:#e74c3c">🔴 Penalty</span>
-            </div>
-            <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
-              <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
-                <input class="form-input" type="number" min="0" id="nwr-pts" value="5" style="width:80px"></div>
-              <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;padding-bottom:0.35rem">
-                <input type="checkbox" id="nwr-requireApproval" checked style="width:14px;height:14px;cursor:pointer">
-                Require parent approval before deducting
-              </label>
-            </div>
-          </div>
-          <div><label class="form-label" style="font-size:0.7rem">Formula description (optional)</label>
-            <textarea class="form-input" id="nwr-formula" rows="2" placeholder="Describe what this rule does…"
-              style="width:100%;font-size:0.78rem;resize:vertical"></textarea></div>
-          <div style="display:flex;gap:0.5rem">
-            <button class="btn btn-approve btn-sm" onclick="addWarningRule()">✓ Add Rule</button>
-            <button class="btn btn-sm" onclick="document.getElementById('add-rule-panel').style.display='none'">Cancel</button>
-          </div>
-        </div>
-      </div>
-    </div>`;
-
-  // ── Existing rule cards ──
-  const ruleCards = rules.length ? rules.map((rule, idx) => {
-    const enabled   = rule.enabled !== false;
-    const isBrush   = rule.type === 'brush';
-    const isPrayer  = rule.type === 'prayer';
-    const remindEnabled  = rule.remindEnabled  !== false;
-    const warnEnabled    = rule.warnEnabled    !== false;
-    const autoDismiss    = !!rule.autoDismissOnTaskDone;
-    const reqApproval    = rule.requireParentApproval !== false;
-
-    const reminderSection = isBrush ? `
-      <div style="background:rgba(52,152,219,0.07);border:1px solid rgba(52,152,219,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
-          <span style="font-size:0.8rem;font-weight:700;color:#3498db">📣 Reminder</span>
-          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
-            <input type="checkbox" id="wr-remindEnabled-${idx}" ${remindEnabled?'checked':''} style="width:14px;height:14px;cursor:pointer"> Enabled
-          </label>
-        </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
-          <div style="flex:1;min-width:150px"><label class="form-label" style="font-size:0.7rem">Trigger task</label>
-            ${_wrTaskSelectHtml('wr-trigger-'+idx, rule.triggerTaskId||'', rule.triggerTaskName||'')}</div>
-          <div><label class="form-label" style="font-size:0.7rem">Speak at (min)</label>
-            <input class="form-input" type="number" min="1" id="wr-remindMins-${idx}" value="${rule.remindMins||30}" style="width:75px"></div>
-        </div>
-      </div>` : '';
-
-    const warningSection = `
-      <div style="background:rgba(255,165,0,0.07);border:1px solid rgba(255,165,0,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.4rem">
-          <span style="font-size:0.8rem;font-weight:700;color:#FFA500">⚠️ Warning</span>
-          <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.75rem;cursor:pointer">
-            <input type="checkbox" id="wr-warnEnabled-${idx}" ${warnEnabled?'checked':''} style="width:14px;height:14px;cursor:pointer"> Enabled
-          </label>
-        </div>
-        ${isBrush ? `
-          <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-start">
-            <div style="flex:1;min-width:150px"><label class="form-label" style="font-size:0.7rem">Condition task (if not done, warn)</label>
-              ${_wrTaskSelectHtml('wr-condition-'+idx, rule.conditionTaskId||'', rule.conditionTaskName||'')}</div>
-            <div><label class="form-label" style="font-size:0.7rem">Show warning after (min)</label>
-              <input class="form-input" type="number" min="1" id="wr-warnMins-${idx}" value="${rule.warnMins||60}" style="width:75px"></div>
-          </div>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;margin-top:0.4rem">
-            <input type="checkbox" id="wr-autoDismiss-${idx}" ${autoDismiss?'checked':''} style="width:14px;height:14px;cursor:pointer">
-            Auto-dismiss if task is completed after warning
-          </label>` : `
-          <div><label class="form-label" style="font-size:0.7rem">Minutes after prayer time</label>
-            <input class="form-input" type="number" min="1" id="wr-minsAfterPrayer-${idx}" value="${rule.minsAfterPrayer||rule.minsBeforePrayer||40}" style="width:80px"></div>`}
-      </div>`;
-
-    const penaltySection = `
-      <div style="background:rgba(231,76,60,0.07);border:1px solid rgba(231,76,60,0.2);border-radius:8px;padding:0.55rem 0.7rem;margin-bottom:0.5rem">
-        <div style="font-size:0.8rem;font-weight:700;color:#e74c3c;margin-bottom:0.4rem">🔴 Penalty</div>
-        <div style="display:flex;gap:0.75rem;align-items:flex-end;flex-wrap:wrap">
-          <div><label class="form-label" style="font-size:0.7rem">Points deducted</label>
-            <input class="form-input" type="number" min="0" id="wr-pts-${idx}" value="${rule.pts||5}" style="width:75px"></div>
-          <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.75rem;cursor:pointer;padding-bottom:0.35rem">
-            <input type="checkbox" id="wr-requireApproval-${idx}" ${reqApproval?'checked':''} style="width:14px;height:14px;cursor:pointer">
-            Require parent approval before deducting
-          </label>
-        </div>
-      </div>`;
-
-    return `<div class="p-card" style="margin-bottom:0.9rem;border-left:3px solid ${enabled?'#FFA500':'rgba(255,255,255,0.15)'}">
-      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.65rem">
-        <span style="font-size:1.1rem">${enabled?'⚙️':'💤'}</span>
-        <input class="form-input" id="wr-name-${idx}" value="${escHtml(rule.name)}"
-          style="font-weight:700;font-size:0.9rem;flex:1;background:transparent;border-color:rgba(255,255,255,0.12)">
-        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer;white-space:nowrap">
-          <input type="checkbox" id="wr-enabled-${idx}" ${enabled?'checked':''} style="width:16px;height:16px;cursor:pointer"> On
-        </label>
-      </div>
-      ${reminderSection}
-      ${warningSection}
-      ${penaltySection}
-      <div style="margin-bottom:0.55rem">
-        <label class="form-label" style="font-size:0.7rem">Formula / notes</label>
-        <textarea class="form-input" id="wr-formula-${idx}" rows="2"
-          style="width:100%;font-size:0.78rem;resize:vertical">${escHtml(rule.formula||'')}</textarea>
-      </div>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-        <button class="btn btn-approve btn-sm" onclick="saveWarningRule(${idx})">💾 Save</button>
-        <button class="btn btn-sm" style="background:rgba(231,76,60,0.18);border:1px solid rgba(231,76,60,0.4);color:#e74c3c"
-          onclick="deleteWarningRule(${idx})">🗑 Delete</button>
-      </div>
-    </div>`;
-  }).join('')
-  : '<div style="opacity:0.45;font-size:0.85rem;padding:0.5rem 0">No automatic rules yet.</div>';
-
-  el.innerHTML = manualHtml
-    + `<div style="display:flex;align-items:center;gap:0.7rem;margin:1.2rem 0 0.7rem">
-        <span style="font-weight:800;font-size:1rem;color:#FFA500">🤖 Automatic Rules</span>
-        <button class="btn btn-sm" style="background:rgba(52,152,219,0.2);border:1px solid rgba(52,152,219,0.4);color:#3498db"
-          onclick="document.getElementById('add-rule-panel').style.display=''">➕ Add Rule</button>
-       </div>`
-    + newRuleForm
-    + ruleCards;
-}
-
-function handleNwrType() {
-  const type = document.getElementById('nwr-type')?.value;
-  const isBrush = type === 'brush';
-  const show = (id, vis) => { const e=document.getElementById(id); if(e) e.style.display=vis?'':'none'; };
-  show('nwr-brush-remind-fields',  isBrush);
-  show('nwr-prayer-remind-fields', !isBrush);
-  show('nwr-brush-warn-fields',    isBrush);
-  show('nwr-prayer-warn-fields',   !isBrush);
-}
-
-async function addWarningRule() {
-  const name = (document.getElementById('nwr-name')?.value||'').trim();
-  const type = document.getElementById('nwr-type')?.value || 'brush';
-  const pts  = parseInt(document.getElementById('nwr-pts')?.value||'5') || 5;
-  const formula = (document.getElementById('nwr-formula')?.value||'').trim();
-  if(!name) { toast('Enter a rule name'); return; }
-
-  const rule = {
-    id: 'custom-' + Date.now(),
-    name, type, enabled: true, pts, formula,
-    remindEnabled:        !!document.getElementById('nwr-remindEnabled')?.checked,
-    warnEnabled:          !!document.getElementById('nwr-warnEnabled')?.checked,
-    autoDismissOnTaskDone:!!document.getElementById('nwr-autoDismiss')?.checked,
-    requireParentApproval:!!document.getElementById('nwr-requireApproval')?.checked,
-  };
-  if(type === 'brush') {
-    const trig = _readWrTask('nwr-trigger');
-    const cond = _readWrTask('nwr-condition');
-    rule.triggerTaskId    = trig.taskId;
-    rule.triggerTaskName  = trig.taskName;
-    rule.conditionTaskId  = cond.taskId;
-    rule.conditionTaskName= cond.taskName;
-    rule.remindMins = parseInt(document.getElementById('nwr-remindMins')?.value||'30') || 30;
-    rule.warnMins   = parseInt(document.getElementById('nwr-warnMins')?.value||'60')   || 60;
-  }
-  if(type === 'prayer') {
-    rule.minsAfterPrayer = parseInt(document.getElementById('nwr-minsAfterPrayer')?.value||'40') || 40;
+  var timerRows = '';
+  var activeTimers = timers.filter(function(t){ return t.active; });
+  if(activeTimers.length) {
+    for(var i=0;i<activeTimers.length;i++) {
+      var t = activeTimers[i];
+      var kid = null;
+      for(var j=0;j<kids.length;j++) { if(kids[j].id===t.kidId){ kid=kids[j]; break; } }
+      var running = !!t.startedAt;
+      var secsLeft = running ? Math.max(0, t.durationSecs - Math.floor((Date.now()-t.startedAt)/1000)) : t.durationSecs;
+      var mm = String(Math.floor(secsLeft/60)).padStart(2,'0');
+      var ss = String(secsLeft%60).padStart(2,'0');
+      var totMM = String(Math.floor(t.durationSecs/60)).padStart(2,'0');
+      var totSS = String(t.durationSecs%60).padStart(2,'0');
+      var disp  = running ? (mm+':'+ss) : (totMM+':'+totSS);
+      var kidLabel = kid ? ((kid.emoji||'⭐')+' '+escHtml(kid.name)) : 'Unknown';
+      var clr = running ? '#3498db' : 'rgba(255,255,255,0.4)';
+      var startBtnHtml = running ? '' : '<button class="btn btn-approve btn-sm" onclick="startTimer(\''+t.id+'\')">&#9654; Start</button>';
+      timerRows += '<div style="display:flex;align-items:center;gap:0.65rem;padding:0.7rem 0.9rem;background:rgba(255,255,255,0.05);border-radius:12px;margin-bottom:0.5rem;border:1px solid rgba(255,255,255,0.1);flex-wrap:wrap">'
+        +'<span style="font-size:1.3rem;flex-shrink:0">'+( running?'&#9654;':\'&#9208;')+'</span>'
+        +'<div style="flex:1;min-width:120px">'
+          +'<div style="font-weight:700;font-size:0.95rem">'+escHtml(t.taskName)+'</div>'
+          +'<div style="font-size:0.72rem;opacity:0.5;margin-top:2px">'+kidLabel+'</div>'
+        +'</div>'
+        +'<div id="ptimer-count-'+t.id+'" style="font-family:\'Fredoka One\',cursive;font-size:1.3rem;min-width:60px;text-align:right;color:'+clr+'">'+disp+'</div>'
+        +startBtnHtml
+        +'<button class="btn btn-danger btn-sm" onclick="cancelTimer(\''+t.id+'\')">&#10005; Cancel</button>'
+        +'</div>';
+    }
+  } else {
+    timerRows = '<div style="opacity:0.4;font-size:0.88rem;padding:0.5rem 0">No active timers. Create one below!</div>';
   }
 
-  const rules = [...(STATE.warningRules||[]), rule];
-  await saveWarningRules(rules);
-  toast('✓ Rule added');
-  renderWarningsTab();
-}
-
-async function deleteWarningRule(idx) {
-  const rules = [...(STATE.warningRules||[])];
-  const name  = rules[idx]?.name || 'rule';
-  rules.splice(idx, 1);
-  await saveWarningRules(rules);
-  try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
-  toast(`🗑 "${name}" deleted`);
-  renderWarningsTab();
-}
-
-async function issueManualWarning() {
-  const sel    = document.getElementById('warn-kid-sel');
-  const reason = (document.getElementById('warn-reason')?.value||'').trim();
-  const pts    = parseInt(document.getElementById('warn-pts')?.value||'0');
-  const reqApproval = document.getElementById('warn-require-approval')?.checked !== false;
-  if(!sel || !reason) { toast('Enter a reason for the warning'); return; }
-  if(!pts || pts < 1) { toast('Enter points to deduct'); return; }
-  await _addAutoPenaltyWarning(sel.value, pts, reason, { requireApproval: reqApproval });
-  document.getElementById('warn-reason').value = '';
-  document.getElementById('warn-pts').value    = '';
-  toast('⚠️ Warning issued — pending confirmation');
-  renderWarningsTab();
-}
-
-async function saveWarningRule(idx) {
-  const rules = JSON.parse(JSON.stringify(STATE.warningRules||[]));
-  const rule  = rules[idx];
-  if(!rule) return;
-  rule.enabled              = !!document.getElementById(`wr-enabled-${idx}`)?.checked;
-  rule.name                 = document.getElementById(`wr-name-${idx}`)?.value?.trim() || rule.name;
-  rule.formula              = document.getElementById(`wr-formula-${idx}`)?.value?.trim() ?? rule.formula;
-  rule.pts                  = parseInt(document.getElementById(`wr-pts-${idx}`)?.value) || rule.pts;
-  rule.remindEnabled        = !!document.getElementById(`wr-remindEnabled-${idx}`)?.checked;
-  rule.warnEnabled          = !!document.getElementById(`wr-warnEnabled-${idx}`)?.checked;
-  rule.autoDismissOnTaskDone= !!document.getElementById(`wr-autoDismiss-${idx}`)?.checked;
-  rule.requireParentApproval= !!document.getElementById(`wr-requireApproval-${idx}`)?.checked;
-  if(rule.type === 'brush') {
-    rule.remindMins = parseInt(document.getElementById(`wr-remindMins-${idx}`)?.value) || rule.remindMins;
-    rule.warnMins   = parseInt(document.getElementById(`wr-warnMins-${idx}`)?.value)   || rule.warnMins;
-    const trig = _readWrTask('wr-trigger-'+idx);
-    const cond = _readWrTask('wr-condition-'+idx);
-    rule.triggerTaskId    = trig.taskId;    rule.triggerTaskName  = trig.taskName;
-    rule.conditionTaskId  = cond.taskId;    rule.conditionTaskName= cond.taskName;
+  var formHtml = '';
+  if(!kids.length) {
+    formHtml = '<div style="opacity:0.5;font-size:0.9rem">No children added yet. Add children in the Kids tab first.</div>';
+  } else {
+    formHtml = '<div style="display:flex;flex-direction:column;gap:0.7rem">'
+      +'<div><label class="form-label">Child</label>'
+      +'<select class="form-input" id="timer-kid-sel" style="width:100%">'+kidOpts+'</select></div>'
+      +'<div><label class="form-label">Task name</label>'
+      +'<input class="form-input" id="timer-task-name" placeholder="e.g. Clean your room" style="width:100%"></div>'
+      +'<div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:flex-end">'
+        +'<div><label class="form-label">Minutes</label>'
+        +'<input class="form-input" id="timer-mins" type="number" min="0" max="180" value="5" style="width:85px;text-align:center"></div>'
+        +'<div><label class="form-label">Seconds</label>'
+        +'<input class="form-input" id="timer-secs" type="number" min="0" max="59" value="0" style="width:85px;text-align:center"></div>'
+        +'<label style="display:flex;align-items:center;gap:0.4rem;font-size:0.85rem;cursor:pointer;padding-bottom:0.3rem">'
+        +'<input type="checkbox" id="timer-autostart" style="width:16px;height:16px;cursor:pointer"> Start immediately</label>'
+      +'</div>'
+      +'<button class="btn btn-gold" onclick="createTimer()">&#9200; Create Timer</button>'
+      +'</div>';
   }
-  if(rule.type === 'prayer') {
-    rule.minsAfterPrayer = parseInt(document.getElementById(`wr-minsAfterPrayer-${idx}`)?.value) || rule.minsAfterPrayer || rule.minsBeforePrayer || 40;
-  }
-  await saveWarningRules(rules);
-  try { localStorage.removeItem('sc_fired_'+todayKey()); _reminderFlags.clear(); } catch(e){}
-  toast('✓ Rule saved');
-  renderWarningsTab();
+
+  el.innerHTML = '<div class="p-card" style="margin-bottom:1rem">'
+    +'<div style="font-size:0.75rem;font-weight:700;opacity:0.5;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem">Active Timers</div>'
+    +timerRows
+    +'</div>'
+    +'<div class="p-card">'
+    +'<div style="font-size:0.75rem;font-weight:700;opacity:0.5;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:0.75rem">New Timer</div>'
+    +formHtml
+    +'</div>';
 }
+window.renderTimersTab = renderTimersTab;
+
 
 window.openChat=openChat; window.closeChat=closeChat; window.sendChatMessage=sendChatMessage;
 window.selectChatKid=selectChatKid; window.startChatVoice=startChatVoice; window.renderChatMessages=renderChatMessages;
+window.clearChat=clearChat; window.deleteChatMsg=deleteChatMsg; window.editChatMsg=editChatMsg; window.saveChatMsgEdit=saveChatMsgEdit; window.cancelChatMsgEdit=cancelChatMsgEdit;
 window.sendAnnouncement=sendAnnouncement; window.deleteAnnouncement=deleteAnnouncement;
 window.dismissAnnouncement=dismissAnnouncement; window.replayAnnouncement=replayAnnouncement;
 window.startAnnounceVoice=startAnnounceVoice; window.renderAnnounceTab=renderAnnounceTab;
