@@ -1962,8 +1962,6 @@ function renderApprovalsTab() {
   const el = document.getElementById('approvals-content');
   if(!el) return;
   const tk = todayKey();
-  const todayDone = STATE.done[tk]||{};
-
 
   const pending = STATE.pending || {};
   const entries = Object.entries(pending).filter(([kidId, taskIds]) =>
@@ -1973,20 +1971,37 @@ function renderApprovalsTab() {
     el.innerHTML = '<div class="approvals-empty">🎉 No pending suggestions<br><span style="font-size:0.85rem">When a child taps "I did something!", it will appear here for you to approve.</span></div>';
     return;
   }
-  el.innerHTML = entries.map(([kidId, taskIds]) => {
+
+  const bulkBar = `<div id="appr-bulk-bar" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;padding:0.65rem 0.9rem;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;margin-bottom:1rem">
+    <label style="display:flex;align-items:center;gap:0.4rem;font-size:0.82rem;cursor:pointer;user-select:none">
+      <input type="checkbox" id="appr-select-all" onchange="toggleAllApprovals(this.checked)" style="width:15px;height:15px;cursor:pointer">
+      Select all
+    </label>
+    <span style="opacity:0.2;font-size:0.8rem">|</span>
+    <button class="btn btn-approve btn-sm" id="appr-sel-approve" onclick="approveSelected()" style="display:none">✓ Approve Selected (<span id="appr-sel-count">0</span>)</button>
+    <button class="btn btn-reject btn-sm" id="appr-sel-reject" onclick="rejectSelected()" style="display:none">✗ Reject Selected</button>
+    <span style="flex:1"></span>
+    <button class="btn btn-approve btn-sm" onclick="approveAll()" style="background:rgba(46,204,113,0.2);border-color:rgba(46,204,113,0.5)">✓ Approve All</button>
+    <button class="btn btn-reject btn-sm" onclick="rejectAll()">✗ Reject All</button>
+  </div>`;
+
+  const cards = entries.map(([kidId, taskIds]) => {
     const kid = kids.find(k=>k.id===kidId);
     if(!kid) return '';
     const col = COLORS[kid.color]||COLORS.pink;
     const tsTimes = taskIds._ts || {};
     const taskRows = Object.entries(taskIds).filter(([k,c])=>k!=='_ts'&&c>0).map(([taskId, count]) => {
-      // Custom deed: key starts with 'deed:'
+      const chkId = 'appr-chk-'+kidId+'-'+btoa(taskId).replace(/[^a-zA-Z0-9]/g,'');
+      // Custom deed
       if(taskId.startsWith('deed:')) {
         const parts = taskId.split(':');
         const deedTs = parseInt(parts[1])||0;
         const deedDesc = parts.slice(2).join(':');
         const tsStr = deedTs ? new Date(deedTs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
-        const deedIdx = `${kid.id}_${Date.now()}_${Math.random().toString(36).slice(2,6)}`;
-        return `<div class="approval-task-row" style="border:1px dashed rgba(255,215,0,0.3);background:rgba(255,215,0,0.05)">
+        const deedIdx = kidId+'_'+deedTs+'_deed';
+        return `<div class="approval-task-row" style="border:1px dashed rgba(255,215,0,0.3);background:rgba(255,215,0,0.05)"
+            data-kid="${escHtml(kidId)}" data-key="${escHtml(encodeURIComponent(taskId))}" data-type="deed" data-inp="${deedIdx}">
+          <input type="checkbox" class="appr-chk" id="${chkId}" onchange="_apprSelUpdate()" style="width:15px;height:15px;cursor:pointer;flex-shrink:0">
           <div style="flex:1">
             <div class="approval-task-name">✨ ${escHtml(deedDesc)}</div>
             <div style="font-size:0.75rem;opacity:0.5;margin-top:2px">New good deed — set points to approve${tsStr?' · suggested '+tsStr:''}</div>
@@ -1994,30 +2009,32 @@ function renderApprovalsTab() {
           <input class="form-input" id="deed-pts-${deedIdx}" type="number" min="1" placeholder="pts"
             style="width:60px;text-align:center;padding:0.3rem 0.4rem;font-size:0.85rem">
           <button class="btn btn-approve btn-sm"
-            data-kid="${escHtml(kid.id)}" data-key="${escHtml(encodeURIComponent(taskId))}" data-inp="${deedIdx}"
-            onclick="approveDeedBtn(this)">✓ Approve</button>
+            data-kid="${escHtml(kidId)}" data-key="${escHtml(encodeURIComponent(taskId))}" data-inp="${deedIdx}"
+            onclick="approveDeedBtn(this)">✓</button>
           <button class="btn btn-reject btn-sm"
-            data-kid="${escHtml(kid.id)}" data-key="${escHtml(encodeURIComponent(taskId))}"
-            onclick="rejectDeedBtn(this)">✗ Reject</button>
+            data-kid="${escHtml(kidId)}" data-key="${escHtml(encodeURIComponent(taskId))}"
+            onclick="rejectDeedBtn(this)">✗</button>
         </div>`;
       }
       const task = tasks.find(t=>t.id===taskId);
       if(!task) return '';
       const tsMs = tsTimes[taskId];
       const tsStr = tsMs ? new Date(tsMs).toLocaleTimeString('en-US',{hour:'2-digit',minute:'2-digit'}) : '';
-      return `<div class="approval-task-row">
+      return `<div class="approval-task-row"
+          data-kid="${escHtml(kidId)}" data-task="${escHtml(taskId)}" data-count="${count}" data-type="task">
+        <input type="checkbox" class="appr-chk" id="${chkId}" onchange="_apprSelUpdate()" style="width:15px;height:15px;cursor:pointer;flex-shrink:0">
         <div style="flex:1;min-width:0">
           <span class="approval-task-name">${escHtml(task.name)}</span>
           ${tsStr ? `<div style="font-size:0.72rem;opacity:0.45;margin-top:1px">suggested ${tsStr}</div>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:3px;flex-shrink:0">
           <input class="pts-override-input" type="number" min="0" max="${task.points}"
-            id="tappr-pts-${kid.id}-${task.id}" value="${task.points}"
+            id="tappr-pts-${kidId}-${task.id}" value="${task.points}"
             title="Pts per completion">
           <span style="font-size:0.62rem;opacity:0.4">/ ${task.points} pts</span>
         </div>
-        <button class="btn btn-approve btn-sm" onclick="approveTask('${kid.id}','${task.id}',${count},'ap')">✓ Approve</button>
-        <button class="btn btn-reject btn-sm" onclick="rejectTask('${kid.id}','${task.id}')">✗ Reject</button>
+        <button class="btn btn-approve btn-sm" onclick="approveTask('${kidId}','${task.id}',${count},'ap')">✓</button>
+        <button class="btn btn-reject btn-sm" onclick="rejectTask('${kidId}','${task.id}')">✗</button>
       </div>`;
     }).join('');
     if(!taskRows.trim()) return '';
@@ -2032,6 +2049,8 @@ function renderApprovalsTab() {
       ${taskRows}
     </div>`;
   }).join('');
+
+  el.innerHTML = bulkBar + cards;
 }
 
 function startListeners() {
@@ -3514,6 +3533,132 @@ async function approveDeed(kidId, encodedKey, ptsInputEl) {
   const kid = STATE.kids.find(k=>k.id===kidId);
   toast('✓ '+(kid?kid.emoji+' ':'')+deedDesc.slice(0,20)+' approved! +'+pts+'pts');
   await addTaskLogEntry(kidId, deedDesc, 'kid');
+}
+
+// ============ BULK APPROVAL HELPERS ============
+function _apprSelUpdate() {
+  const chks = document.querySelectorAll('.appr-chk');
+  const selCount = Array.from(chks).filter(c=>c.checked).length;
+  const selAppr = document.getElementById('appr-sel-approve');
+  const selRej  = document.getElementById('appr-sel-reject');
+  const countEl = document.getElementById('appr-sel-count');
+  const allChk  = document.getElementById('appr-select-all');
+  if(selAppr) selAppr.style.display = selCount > 0 ? '' : 'none';
+  if(selRej)  selRej.style.display  = selCount > 0 ? '' : 'none';
+  if(countEl) countEl.textContent = selCount;
+  if(allChk)  allChk.indeterminate = selCount > 0 && selCount < chks.length;
+  if(allChk && selCount === chks.length && chks.length > 0) allChk.checked = true;
+  if(allChk && selCount === 0) allChk.checked = false;
+}
+
+function toggleAllApprovals(checked) {
+  document.querySelectorAll('.appr-chk').forEach(c => c.checked = checked);
+  _apprSelUpdate();
+}
+
+// Collect all task rows (optionally only checked ones)
+function _collectApprovalRows(onlyChecked) {
+  const rows = document.querySelectorAll('#approvals-content .approval-task-row[data-type]');
+  const result = [];
+  rows.forEach(row => {
+    const chk = row.querySelector('.appr-chk');
+    if(onlyChecked && (!chk || !chk.checked)) return;
+    const type = row.dataset.type;
+    if(type === 'task') {
+      result.push({ type:'task', kidId:row.dataset.kid, taskId:row.dataset.task, count:parseInt(row.dataset.count)||1 });
+    } else if(type === 'deed') {
+      result.push({ type:'deed', kidId:row.dataset.kid, encodedKey:row.dataset.key, deedIdx:row.dataset.inp });
+    }
+  });
+  return result;
+}
+
+async function approveSelected() {
+  const items = _collectApprovalRows(true);
+  if(!items.length) return;
+  // Validate deed pts
+  const deedsMissingPts = items.filter(i=>i.type==='deed').filter(i=>{
+    const inp = document.getElementById('deed-pts-'+i.deedIdx);
+    return !inp || !(parseInt(inp.value)>=1);
+  });
+  if(deedsMissingPts.length) { toast('Set points for all good deeds first!'); return; }
+  await _bulkApprove(items);
+}
+
+async function approveAll() {
+  const items = _collectApprovalRows(false);
+  if(!items.length) return;
+  const deedsMissingPts = items.filter(i=>i.type==='deed').filter(i=>{
+    const inp = document.getElementById('deed-pts-'+i.deedIdx);
+    return !inp || !(parseInt(inp.value)>=1);
+  });
+  if(deedsMissingPts.length) { toast('Set points for all good deeds first, then approve all!'); return; }
+  await _bulkApprove(items);
+}
+
+async function _bulkApprove(items) {
+  const done    = JSON.parse(JSON.stringify(STATE.done));
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  const tk = todayKey();
+  if(!done[tk]) done[tk]={};
+  let totalPts = 0;
+
+  for(const item of items) {
+    if(item.type === 'task') {
+      const task = STATE.tasks.find(t=>t.id===item.taskId);
+      const inp  = document.getElementById('tappr-pts-'+item.kidId+'-'+item.taskId);
+      const customPts = inp ? Math.max(0, parseInt(inp.value)||0) : (task?task.points:0);
+      if(!done[tk][item.kidId]) done[tk][item.kidId]={};
+      done[tk][item.kidId][item.taskId] = (done[tk][item.kidId][item.taskId]||0) + item.count;
+      if(task && customPts !== task.points) {
+        if(!done[tk][item.kidId]['_pts']) done[tk][item.kidId]['_pts']={};
+        done[tk][item.kidId]['_pts'][item.taskId] = customPts;
+      }
+      if(pending[item.kidId]) { delete pending[item.kidId][item.taskId]; if(!Object.keys(pending[item.kidId]).length) delete pending[item.kidId]; }
+      totalPts += customPts * item.count;
+      await addTaskLogEntry(item.kidId, task?task.name:item.taskId, 'kid');
+    } else if(item.type === 'deed') {
+      const taskId = decodeURIComponent(item.encodedKey);
+      const ptsInp = document.getElementById('deed-pts-'+item.deedIdx);
+      const pts    = parseInt(ptsInp ? ptsInp.value : 0);
+      if(!pts || pts < 1) continue;
+      const deedDesc = taskId.split(':').slice(2).join(':');
+      if(!done[tk].xdeeds) done[tk].xdeeds = {};
+      if(!done[tk].xdeeds[item.kidId]) done[tk].xdeeds[item.kidId] = [];
+      done[tk].xdeeds[item.kidId].push({ desc: deedDesc, pts });
+      if(pending[item.kidId]) { delete pending[item.kidId][taskId]; if(!Object.keys(pending[item.kidId]).length) delete pending[item.kidId]; }
+      totalPts += pts;
+      await addTaskLogEntry(item.kidId, deedDesc, 'kid');
+    }
+  }
+
+  await Promise.all([saveDone(done), savePending(pending)]);
+  toast('✓ Approved '+items.length+' item'+(items.length!==1?'s':'')+' · +'+totalPts+'pts total');
+}
+
+async function rejectSelected() {
+  const items = _collectApprovalRows(true);
+  if(!items.length) return;
+  await _bulkReject(items);
+}
+
+async function rejectAll() {
+  const items = _collectApprovalRows(false);
+  if(!items.length) return;
+  if(!confirm('Reject ALL '+items.length+' pending item'+(items.length!==1?'s':'')+' ?')) return;
+  await _bulkReject(items);
+}
+
+async function _bulkReject(items) {
+  const pending = JSON.parse(JSON.stringify(STATE.pending||{}));
+  for(const item of items) {
+    const realKey = item.type==='deed' ? decodeURIComponent(item.encodedKey) : item.taskId;
+    const name    = item.type==='deed' ? realKey.split(':').slice(2).join(':') : (STATE.tasks.find(t=>t.id===realKey)||{}).name||realKey;
+    if(pending[item.kidId]) { delete pending[item.kidId][realKey]; if(!Object.keys(pending[item.kidId]).length) delete pending[item.kidId]; }
+    await addTaskLogEntry(item.kidId, name, 'parent', 'rejected');
+  }
+  await savePending(pending);
+  toast('Rejected '+items.length+' item'+(items.length!==1?'s':'')+'.');
 }
 
 // ============ KID EDIT MODAL ============
@@ -5181,6 +5326,7 @@ window.triggerPhotoUpload=triggerPhotoUpload; window.handlePhotoUpload=handlePho
 window.openKidsHistory=openKidsHistory; window.closeKidsHistory=closeKidsHistory; window.switchKidsHistoryTab=switchKidsHistoryTab; window.toggleKhDay=toggleKhDay;
 window.closeSuggestModal=closeSuggestModal; window.submitSuggestions=submitSuggestions;
 window.approveTask=approveTask; window.recordSpending=recordSpending; window.rejectTask=rejectTask; window.approveDeed=approveDeed; window.approveDeedBtn=approveDeedBtn; window.rejectDeedBtn=rejectDeedBtn;
+window.toggleAllApprovals=toggleAllApprovals; window._apprSelUpdate=_apprSelUpdate; window.approveSelected=approveSelected; window.rejectSelected=rejectSelected; window.approveAll=approveAll; window.rejectAll=rejectAll;
 window.addXBonus=addXBonus; window.startEditXBonus=startEditXBonus; window.saveXBonus=saveXBonus; window.cancelEditXBonus=cancelEditXBonus; window.deleteXBonus=deleteXBonus;
 window.addXPenalty=addXPenalty;
 window.startEditXPenalty=startEditXPenalty; window.saveXPenalty=saveXPenalty; window.cancelEditXPenalty=cancelEditXPenalty; window.deleteXPenalty=deleteXPenalty;
