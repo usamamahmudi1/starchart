@@ -1973,7 +1973,7 @@ function renderApprovalsTab() {
     el.innerHTML = '<div class="approvals-empty">🎉 No pending suggestions<br><span style="font-size:0.85rem">When a child taps "I did something!", it will appear here for you to approve.</span></div>';
     return;
   }
-  el.innerHTML = penaltyCards + entries.map(([kidId, taskIds]) => {
+  el.innerHTML = entries.map(([kidId, taskIds]) => {
     const kid = kids.find(k=>k.id===kidId);
     if(!kid) return '';
     const col = COLORS[kid.color]||COLORS.pink;
